@@ -1,8 +1,8 @@
-function fetchMetrics() {
+function fetchSystemMetrics() {
     fetch('/api/metrics')
         .then(response => response.json())
         .then(data => {
-            const metricsDiv = document.getElementById('metrics');
+            const metricsDiv = document.getElementById('system-metrics');
             metricsDiv.innerHTML = '';
 
             // Update the last update timestamp
@@ -66,28 +66,92 @@ function fetchMetrics() {
                     });
                 }, 1000);
                 
-                console.log('Metrics updated:', data);
+                console.log('System metrics updated:', data);
             } else {
                 const errorElement = document.createElement('li');
                 errorElement.classList.add('list-group-item', 'text-danger');
-                errorElement.textContent = 'No data available.';
+                errorElement.textContent = 'No system data available.';
                 metricsDiv.appendChild(errorElement);
-                console.log('No metrics data available');
+                console.log('No system metrics data available');
             }
         })
         .catch(error => {
-            console.error('Error fetching metrics:', error);
-            const metricsDiv = document.getElementById('metrics');
-            metricsDiv.innerHTML = '<li class="list-group-item text-danger">Error fetching metrics. Check console for details.</li>';
+            console.error('Error fetching system metrics:', error);
+            const metricsDiv = document.getElementById('system-metrics');
+            metricsDiv.innerHTML = '<li class="list-group-item text-danger">Error fetching system metrics. Check console for details.</li>';
         });
 }
 
+function fetchStockMetrics() {
+    fetch('/api/stock_metrics')
+        .then(response => response.json())
+        .then(stocks => {
+            const stocksDiv = document.getElementById('stock-metrics');
+            stocksDiv.innerHTML = '';
+
+            if (stocks && stocks.length > 0) {
+                stocks.forEach(stock => {
+                    const stockElement = document.createElement('li');
+                    stockElement.classList.add('list-group-item', 'd-flex', 'justify-content-between', 'align-items-center');
+                    stockElement.style.transition = 'background-color 1s';
+                    stockElement.style.backgroundColor = '#f0f7ff';
+                    
+                    // Determine if stock is up or down for styling
+                    const changeClass = stock.change_percent >= 0 ? 'badge-success' : 'badge-danger';
+                    const changeSign = stock.change_percent >= 0 ? '+' : '';
+                    
+                    stockElement.innerHTML = `
+                        <div>
+                            <strong>${stock.symbol}</strong>
+                            <span class="ml-3">$${stock.price.toFixed(2)}</span>
+                        </div>
+                        <span class="badge ${changeClass} badge-pill">${changeSign}${stock.change_percent.toFixed(2)}%</span>
+                    `;
+                    stocksDiv.appendChild(stockElement);
+                });
+                
+                // Last Updated Timestamp
+                const timestampElement = document.createElement('li');
+                timestampElement.classList.add('list-group-item', 'text-muted', 'small');
+                timestampElement.innerHTML = `Last stock update: ${new Date(stocks[0].last_updated).toLocaleString()}`;
+                stocksDiv.appendChild(timestampElement);
+                
+                // Reset background color after a short delay
+                setTimeout(() => {
+                    const elements = stocksDiv.querySelectorAll('.list-group-item');
+                    elements.forEach(el => {
+                        if (el.style) el.style.backgroundColor = '';
+                    });
+                }, 1000);
+                
+                console.log('Stock metrics updated:', stocks);
+            } else {
+                const errorElement = document.createElement('li');
+                errorElement.classList.add('list-group-item', 'text-warning');
+                errorElement.textContent = 'No stock data available yet. Please wait for the first update.';
+                stocksDiv.appendChild(errorElement);
+                console.log('No stock metrics data available');
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching stock metrics:', error);
+            const stocksDiv = document.getElementById('stock-metrics');
+            stocksDiv.innerHTML = '<li class="list-group-item text-danger">Error fetching stock data. Check console for details.</li>';
+        });
+}
+
+// Fetch all metrics
+function fetchAllMetrics() {
+    fetchSystemMetrics();
+    fetchStockMetrics();
+}
+
 // Fetch metrics every 5 seconds
-const intervalId = setInterval(fetchMetrics, 5000);
+const intervalId = setInterval(fetchAllMetrics, 5000);
 console.log('Metrics update interval set:', intervalId);
 
 // Fetch metrics on page load
 window.onload = function() {
     console.log('Page loaded, fetching initial metrics');
-    fetchMetrics();
+    fetchAllMetrics();
 };

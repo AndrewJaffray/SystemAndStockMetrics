@@ -24,6 +24,9 @@
         .update-indicator.active {
             opacity: 1;
         }
+        .card {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
@@ -32,18 +35,43 @@
     </nav>
     
     <div class="container">
-        <div class="row">
+        <div class="row mt-4">
             <div class="col-md-12">
-                <div class="card mt-4">
-                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <span>System Metrics</span>
+                <div class="alert alert-info">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span><strong>Dashboard Status:</strong> Live</span>
                         <div>
-                            <small id="last-update" class="text-white">Last update: Never</small>
+                            <small id="last-update" class="text-dark">Last update: Never</small>
                             <span id="update-indicator" class="update-indicator"></span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- System Metrics Card -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <i class="fas fa-laptop"></i> System Metrics
+                    </div>
                     <div class="card-body">
-                        <ul id="metrics" class="list-group">
+                        <ul id="system-metrics" class="list-group">
+                            <!-- Dynamically populated through JavaScript -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stock Metrics Card -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <i class="fas fa-chart-line"></i> Stock Metrics
+                    </div>
+                    <div class="card-body">
+                        <ul id="stock-metrics" class="list-group">
                             <!-- Dynamically populated through JavaScript -->
                         </ul>
                     </div>
@@ -56,6 +84,8 @@
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- Include Font Awesome for icons -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <!-- Include your custom JavaScript file -->
     <script src="{{ url_for('static', filename='scripts/metrics.js') }}"></script>
 </body>
