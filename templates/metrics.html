@@ -11,6 +11,19 @@
         body {
             margin-top: 20px;
         }
+        .update-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #28a745;
+            margin-left: 10px;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .update-indicator.active {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -22,8 +35,12 @@
         <div class="row">
             <div class="col-md-12">
                 <div class="card mt-4">
-                    <div class="card-header bg-primary text-white">
-                        System Metrics
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span>System Metrics</span>
+                        <div>
+                            <small id="last-update" class="text-white">Last update: Never</small>
+                            <span id="update-indicator" class="update-indicator"></span>
+                        </div>
                     </div>
                     <div class="card-body">
                         <ul id="metrics" class="list-group">

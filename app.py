@@ -42,10 +42,15 @@ def api_metrics():
     metric = None
     with sqlite3.connect('database.db') as conn:
         cur = conn.cursor()
-        cur.execute('SELECT cpu_temp, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
+        cur.execute('SELECT cpu_temp, cpu_usage, memory_usage, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
         row = cur.fetchone()
         if row:
-            metric = {'cpu_temp': row[0], 'last_updated': row[1]}
+            metric = {
+                'cpu_temp': row[0],
+                'cpu_usage': row[1],
+                'memory_usage': row[2],
+                'last_updated': row[3]
+            }
     return jsonify(metric)
 
 @app.route('/')
