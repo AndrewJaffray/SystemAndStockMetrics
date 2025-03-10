@@ -6,8 +6,8 @@
     <title>Metrics Dashboard</title>
     <!-- Include Bootstrap CSS -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Include Google Charts -->
-    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <!-- Include ApexCharts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <!-- Custom styles -->
     <style>
         body {
@@ -35,6 +35,9 @@
             width: 100%;
             margin-top: 20px;
         }
+        .gauge-chart {
+            height: 250px;
+        }
     </style>
 </head>
 <body>
@@ -57,26 +60,33 @@
             </div>
         </div>
         
-        <div class="row">
-            <!-- System Metrics Card -->
-            <div class="col-md-6">
+        <!-- System Metrics Card -->
+        <div class="row mb-4">
+            <div class="col-md-12">
                 <div class="card">
                     <div class="card-header bg-primary text-white">
                         <i class="fas fa-laptop"></i> System Metrics
                     </div>
                     <div class="card-body">
-                        <ul id="system-metrics" class="list-group">
-                            <!-- Dynamically populated through JavaScript -->
-                        </ul>
-                        <div class="chart-container">
-                            <div id="systemMetricsChart"></div>
+                        <div class="row justify-content-around">
+                            <div class="col-md-5 text-center">
+                                <div id="cpuGauge" class="gauge-chart"></div>
+                            </div>
+                            <div class="col-md-5 text-center">
+                                <div id="memoryGauge" class="gauge-chart"></div>
+                            </div>
                         </div>
+                        <ul id="system-metrics" class="list-group mt-3">
+                            <!-- Timestamp will be added here -->
+                        </ul>
                     </div>
                 </div>
             </div>
+        </div>
             
-            <!-- Stock Metrics Card -->
-            <div class="col-md-6">
+        <!-- Stock Metrics Card -->
+        <div class="row">
+            <div class="col-md-12">
                 <div class="card">
                     <div class="card-header bg-success text-white">
                         <i class="fas fa-chart-line"></i> Stock Metrics
