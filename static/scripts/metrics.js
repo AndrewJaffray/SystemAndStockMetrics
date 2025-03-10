@@ -308,20 +308,27 @@ function createOrUpdateStockChart(symbol, data) {
     // Get color for this stock
     const color = colors[symbol] || colors.default;
     
+    // Get the most recent timestamp for this stock
+    const latestData = data.length > 0 ? data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] : null;
+    const lastUpdated = latestData ? new Date(latestData.timestamp).toLocaleString() : 'No data available';
+    
     // Check if container exists, if not create it
     let chartContainer = document.getElementById(`stock-chart-container-${symbol}`);
     
     if (!chartContainer) {
-        // Create a new column for this stock chart
+        // Create a new column for this stock chart - now full width
         const column = document.createElement('div');
-        column.className = 'col-md-6 mb-4';
+        column.className = 'col-md-12 mb-4'; // Changed from col-md-6 to col-md-12 for full width
         column.id = `stock-chart-container-${symbol}`;
         
         // Create card for the chart
         column.innerHTML = `
             <div class="card">
                 <div class="card-header" style="background-color: ${color}20; border-color: ${color}">
-                    <strong>${symbol}</strong> Stock Price
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong>${symbol}</strong> Stock Price
+                        <small class="text-muted stock-last-updated" id="last-updated-${symbol}">Last update: ${lastUpdated}</small>
+                    </div>
                 </div>
                 <div class="card-body">
                     <canvas id="stock-chart-${symbol}"></canvas>
@@ -334,6 +341,12 @@ function createOrUpdateStockChart(symbol, data) {
         
         // Update reference to the container
         chartContainer = column;
+    } else {
+        // Update the last updated timestamp
+        const lastUpdatedElement = document.getElementById(`last-updated-${symbol}`);
+        if (lastUpdatedElement) {
+            lastUpdatedElement.textContent = `Last update: ${lastUpdated}`;
+        }
     }
     
     // Get canvas context
@@ -348,7 +361,7 @@ function createOrUpdateStockChart(symbol, data) {
         stockCharts[symbol].destroy();
     }
     
-    // Create new chart
+    // Create new chart with increased height for better visibility
     stockCharts[symbol] = new Chart(ctx, {
         type: 'line',
         data: {

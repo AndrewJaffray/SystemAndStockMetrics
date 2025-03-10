@@ -39,7 +39,7 @@
         }
         .stock-chart-container {
             position: relative;
-            height: 250px;
+            height: 350px; /* Increased height for better visibility */
             width: 100%;
             margin-top: 15px;
         }
@@ -62,6 +62,69 @@
             bottom: 40px;
             font-size: 24px;
             font-weight: bold;
+        }
+        /* Add styles for individual stock charts */
+        #stock-charts-container .card-body {
+            height: 350px; /* Set fixed height for chart containers */
+            padding: 15px;
+        }
+        #stock-charts-container .card {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        #stock-charts-container .card:hover {
+            transform: translateY(-5px);
+        }
+        /* Style for stock last updated timestamp */
+        .stock-last-updated {
+            font-size: 0.85rem;
+            padding: 2px 8px;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 4px;
+        }
+        /* Time period selector styles */
+        .time-period-selector {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .time-period-selector .btn-group .btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            border-radius: 0;
+            background: transparent;
+            color: #666;
+            border: none;
+            border-bottom: 2px solid transparent;
+        }
+        .time-period-selector .btn-group .btn.active {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            background: transparent;
+            font-weight: bold;
+        }
+        .time-period-selector .btn-group .btn:hover:not(.active) {
+            border-bottom: 2px solid #ddd;
+        }
+        .stock-price-display {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .stock-change-display {
+            font-size: 1rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .stock-change-positive {
+            background-color: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+        }
+        .stock-change-negative {
+            background-color: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
         }
     </style>
 </head>
