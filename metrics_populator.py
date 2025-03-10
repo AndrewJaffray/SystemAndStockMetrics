@@ -33,63 +33,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_cpu_temperature():
-    """Get CPU temperature based on the operating system."""
-    system = platform.system()
-    
-    if system == 'Darwin':  # macOS
-        try:
-            # Use osx-cpu-temp to get temperature on macOS
-            cmd = ['osx-cpu-temp']
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0:
-                # Extract the temperature value
-                temp_str = result.stdout.strip()
-                if '°C' in temp_str:
-                    temp_value = float(temp_str.split('°C')[0].strip())
-                    logger.info(f"CPU temperature from osx-cpu-temp: {temp_value}°C")
-                    return temp_value
-                else:
-                    logger.warning(f"Unexpected output format from osx-cpu-temp: {temp_str}")
-            
-            # If we get here, either the command failed or the output was unexpected
-            logger.warning("Using fallback temperature value for macOS")
-            return 45  # Fallback value for macOS
-        except Exception as e:
-            logger.error(f"Error getting CPU temperature: {e}")
-            return 45  # Fallback value
-    
-    elif system == 'Linux':
-        try:
-            temps = psutil.sensors_temperatures()
-            if 'coretemp' in temps:
-                return temps['coretemp'][0].current
-            return 50  # Fallback value
-        except Exception as e:
-            logger.error(f"Error getting CPU temperature: {e}")
-            return 50  # Fallback value
-    
-    else:  # Windows or other
-        try:
-            # Try to use psutil for Windows
-            temps = psutil.sensors_temperatures()
-            if temps:
-                for name, entries in temps.items():
-                    if entries:
-                        return entries[0].current
-            return 50  # Fallback value
-        except Exception as e:
-            logger.error(f"Error getting CPU temperature: {e}")
-            return 50  # Fallback value
-
 def gather_metrics():
     """Gathers core system metrics."""
     metrics = {}
 
-    # Get real CPU temperature if possible
-    metrics['cpu_temp'] = get_cpu_temperature()
-
-    # Additional metrics
+    # Core metrics
     metrics['cpu_usage'] = psutil.cpu_percent(interval=1)
     metrics['memory_usage'] = psutil.virtual_memory().percent
     
@@ -100,8 +48,8 @@ def gather_metrics():
 
 def send_metrics():
     """Sends gathered metrics to the Flask server."""
-    #url = 'http://127.0.0.1:5001/metrics'
-    url = 'https://AndrewJaffray.pythonanywhere.com/metrics'
+    url = 'http://127.0.0.1:5001/metrics'
+    #url = 'https://AndrewJaffray.pythonanywhere.com/metrics'
 
     logger.info(f"Starting metrics collection service, sending to: {url}")
     

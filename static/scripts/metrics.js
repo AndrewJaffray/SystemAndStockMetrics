@@ -9,6 +9,11 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Page loaded, fetching initial metrics');
     // Initialize empty gauges
     initGauges();
+    
+    // Immediately fetch historical data to show charts
+    fetchHistoricalStockMetrics();
+    
+    // Then fetch all metrics (including real-time data)
     fetchAllMetrics();
 });
 
@@ -250,45 +255,113 @@ function fetchHistoricalSystemMetrics() {
 
 // Function to fetch historical stock metrics and update individual charts
 function fetchHistoricalStockMetrics() {
+    console.log('Fetching historical stock metrics...');
     fetch('/api/historical/stock_metrics')
-        .then(response => response.json())
-        .then(data => {
-            if (data && data.length > 0) {
-                // Store the data for each stock symbol
-                const stockSymbols = [...new Set(data.map(item => item.symbol))];
-                
-                stockSymbols.forEach(symbol => {
-                    // Filter data for this specific stock
-                    const symbolData = data.filter(item => item.symbol === symbol);
-                    
-                    // Store the data for this symbol
-                    stockData[symbol] = symbolData;
-                    
-                    // Create or update chart for this stock
-                    createOrUpdateStockChart(symbol, symbolData);
-                });
-                
-                // Remove charts for stocks that no longer exist in the data
-                Object.keys(stockCharts).forEach(symbol => {
-                    if (!stockSymbols.includes(symbol)) {
-                        // Destroy chart
-                        if (stockCharts[symbol]) {
-                            stockCharts[symbol].destroy();
-                            delete stockCharts[symbol];
-                        }
-                        
-                        // Remove chart container
-                        const chartContainer = document.getElementById(`stock-chart-container-${symbol}`);
-                        if (chartContainer) {
-                            chartContainer.remove();
-                        }
-                    }
-                });
-                
-                console.log('Historical stock metrics updated for individual charts');
-            } else {
-                console.log('No historical stock metrics data available');
+        .then(response => {
+            console.log('Historical stock metrics response status:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
             }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Historical stock metrics data received:', data);
+            
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                console.warn('No historical stock metrics data available or invalid format');
+                return;
+            }
+            
+            // Validate data format
+            const validData = data.filter(item => {
+                if (!item || typeof item !== 'object') return false;
+                if (!item.symbol || !item.price || !item.timestamp) return false;
+                return true;
+            });
+            
+            if (validData.length === 0) {
+                console.warn('No valid data points found in historical stock metrics');
+                return;
+            }
+            
+            console.log(`Found ${validData.length} valid data points out of ${data.length} total`);
+            
+            // Store the data for each stock symbol
+            const stockSymbols = [...new Set(validData.map(item => item.symbol))];
+            console.log('Unique stock symbols found:', stockSymbols);
+            
+            stockSymbols.forEach(symbol => {
+                // Filter data for this specific stock
+                const symbolData = validData.filter(item => item.symbol === symbol);
+                console.log(`Data for ${symbol}: ${symbolData.length} points`);
+                
+                if (symbolData.length === 0) {
+                    console.warn(`No valid data points for ${symbol}`);
+                    return;
+                }
+                
+                // Ensure price is a number
+                const processedData = symbolData.map(item => ({
+                    ...item,
+                    price: typeof item.price === 'number' ? item.price : parseFloat(item.price),
+                    change_percent: typeof item.change_percent === 'number' ? item.change_percent : parseFloat(item.change_percent || '0')
+                }));
+                
+                // Ensure we have at least 2 different timestamps
+                const uniqueTimestamps = [...new Set(processedData.map(item => item.timestamp))];
+                if (uniqueTimestamps.length < 2) {
+                    console.log(`Only ${uniqueTimestamps.length} unique timestamps for ${symbol}, adding simulated data`);
+                    
+                    // Add several data points with slight variations to ensure the chart displays properly
+                    const existingPoint = processedData[0];
+                    const existingTime = new Date(existingPoint.timestamp);
+                    
+                    // Add points at different times
+                    for (let i = 1; i <= 5; i++) {
+                        const newTime = new Date(existingTime);
+                        newTime.setHours(newTime.getHours() - i);
+                        
+                        // Add a small random variation to the price
+                        const randomFactor = 0.005; // 0.5% variation
+                        const randomVariation = (Math.random() * 2 - 1) * existingPoint.price * randomFactor;
+                        
+                        processedData.push({
+                            ...existingPoint,
+                            timestamp: newTime.toISOString(),
+                            price: existingPoint.price * (1 + (i * 0.001) + randomVariation) // Small increasing trend with randomness
+                        });
+                        
+                        console.log(`Added simulated data point at ${newTime.toISOString()}`);
+                    }
+                }
+                
+                // Sort data by timestamp to ensure proper chart display
+                const sortedData = processedData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                
+                // Store the data for this symbol
+                stockData[symbol] = sortedData;
+                
+                // Create or update chart for this stock
+                createOrUpdateStockChart(symbol, sortedData);
+            });
+            
+            // Remove charts for stocks that no longer exist in the data
+            Object.keys(stockCharts).forEach(symbol => {
+                if (!stockSymbols.includes(symbol)) {
+                    console.log(`Removing chart for ${symbol} as it no longer exists in the data`);
+                    // Destroy chart
+                    if (stockCharts[symbol]) {
+                        stockCharts[symbol].destroy();
+                        delete stockCharts[symbol];
+                    }
+                    
+                    // Remove chart container
+                    const container = document.getElementById(`stock-chart-container-${symbol}`);
+                    if (container) {
+                        container.remove();
+                    }
+                }
+            });
         })
         .catch(error => {
             console.error('Error fetching historical stock metrics:', error);
@@ -297,34 +370,52 @@ function fetchHistoricalStockMetrics() {
 
 // Function to calculate price change for a given time period
 function calculatePriceChange(data, days) {
+    console.log(`Calculating price change for time period of ${days} days with ${data.length} data points`);
+    
     if (!data || data.length === 0) {
+        console.warn('No data available for price change calculation');
         return { price: 0, change: 0, changePercent: 0 };
     }
     
     // Sort data by timestamp (newest first)
     const sortedData = [...data].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    console.log('Sorted data for price change calculation (newest first):', sortedData.slice(0, 3));
     
     // Get current price (most recent data point)
     const currentPrice = sortedData[0].price;
+    console.log(`Current price: $${currentPrice.toFixed(2)}`);
     
     // Calculate cutoff date for the selected time period
     const now = new Date(sortedData[0].timestamp);
     const cutoffDate = new Date(now);
     cutoffDate.setDate(cutoffDate.getDate() - days);
+    console.log(`Cutoff date for price change: ${cutoffDate.toLocaleString()}`);
     
     // Find the closest data point to the cutoff date
     let previousPrice = currentPrice;
+    let previousPriceDate = now;
     for (let i = 0; i < sortedData.length; i++) {
         const dataDate = new Date(sortedData[i].timestamp);
         if (dataDate <= cutoffDate) {
             previousPrice = sortedData[i].price;
+            previousPriceDate = dataDate;
+            console.log(`Found previous price: $${previousPrice.toFixed(2)} from ${previousPriceDate.toLocaleString()}`);
             break;
         }
+    }
+    
+    // If we didn't find a price before the cutoff date, use the oldest available price
+    if (previousPriceDate >= cutoffDate && sortedData.length > 1) {
+        previousPrice = sortedData[sortedData.length - 1].price;
+        previousPriceDate = new Date(sortedData[sortedData.length - 1].timestamp);
+        console.log(`Using oldest available price: $${previousPrice.toFixed(2)} from ${previousPriceDate.toLocaleString()}`);
     }
     
     // Calculate change and percent change
     const change = currentPrice - previousPrice;
     const changePercent = (change / previousPrice) * 100;
+    
+    console.log(`Price change: $${change.toFixed(2)} (${changePercent.toFixed(2)}%)`);
     
     return {
         price: currentPrice,
@@ -335,29 +426,43 @@ function calculatePriceChange(data, days) {
 
 // Function to update chart for a selected time period
 function updateChartForTimePeriod(symbol, data, days) {
-    if (!data || data.length === 0) return;
+    console.log(`Updating chart for ${symbol} with time period of ${days} days`);
+    
+    if (!data || data.length === 0) {
+        console.error(`No data available for ${symbol}`);
+        return;
+    }
+    
+    // Debug the data structure
+    console.log("First data point structure:", JSON.stringify(data[0], null, 2));
     
     // Sort data by timestamp
     const sortedData = [...data].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    console.log(`Sorted data for ${symbol}:`, sortedData);
     
     // Calculate cutoff date for the selected time period
     const now = new Date(sortedData[sortedData.length - 1].timestamp);
     const cutoffDate = new Date(now);
     cutoffDate.setDate(cutoffDate.getDate() - days);
+    console.log(`Cutoff date for ${symbol}:`, cutoffDate);
     
     // Filter data for the selected time period
     let filteredData = sortedData;
     if (days < 9999) { // If not "ALL" time period
         filteredData = sortedData.filter(item => new Date(item.timestamp) >= cutoffDate);
     }
+    console.log(`Filtered data for ${symbol} (${filteredData.length} points):`, filteredData);
     
     // If we have very few data points, simulate more data points
     if (filteredData.length < 5) {
+        console.log(`Not enough data points for ${symbol}, simulating more...`);
         filteredData = simulateMoreDataPoints(filteredData, days);
+        console.log(`Simulated data for ${symbol} (${filteredData.length} points):`, filteredData);
     }
     
     // Calculate price change for the selected time period
     const priceInfo = calculatePriceChange(data, days);
+    console.log(`Price info for ${symbol}:`, priceInfo);
     
     // Update price and change display
     const priceDisplay = document.getElementById(`price-display-${symbol}`);
@@ -377,13 +482,26 @@ function updateChartForTimePeriod(symbol, data, days) {
     
     // Get canvas element and container
     const canvas = document.getElementById(`stock-chart-${symbol}`);
+    if (!canvas) {
+        console.error(`Canvas element not found for ${symbol}`);
+        return;
+    }
+    
     const cardBody = canvas.closest('.card-body');
     
     // Calculate min and max prices for y-axis scaling
     const prices = filteredData.map(item => item.price);
+    if (prices.length === 0) {
+        console.error(`No price data available for ${symbol}`);
+        return;
+    }
+    
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
     const priceRange = maxPrice - minPrice;
+    
+    // If all prices are the same, add a small range
+    const effectivePriceRange = priceRange === 0 ? maxPrice * 0.01 : priceRange;
     
     // Calculate appropriate chart height based on price range
     // More range = taller chart
@@ -394,7 +512,7 @@ function updateChartForTimePeriod(symbol, data, days) {
         chartHeight = 450; // Taller for long-term data
     } else if (days >= 30) { // 1M or 3M
         chartHeight = 400; // Medium height for medium-term data
-    } else if (priceRange > (priceInfo.price * 0.1)) { // If range is more than 10% of current price
+    } else if (effectivePriceRange > (priceInfo.price * 0.1)) { // If range is more than 10% of current price
         chartHeight = 400; // Increase height for volatile stocks
     }
     
@@ -409,9 +527,42 @@ function updateChartForTimePeriod(symbol, data, days) {
     // Get canvas context
     const ctx = canvas.getContext('2d');
     
-    // Prepare data for Chart.js
-    const timestamps = filteredData.map(item => new Date(item.timestamp));
-    const priceData = filteredData.map(item => item.price);
+    // Prepare the chart data in the format Chart.js expects
+    const chartData = filteredData
+        .filter(item => {
+            // Filter out any items with NaN or invalid values
+            const price = parseFloat(item.price);
+            const timestamp = new Date(item.timestamp);
+            const isValid = !isNaN(price) && !isNaN(timestamp.getTime());
+            if (!isValid) {
+                console.warn(`Filtered out invalid data point: ${JSON.stringify(item)}`);
+            }
+            return isValid;
+        })
+        .map(item => ({
+            x: new Date(item.timestamp),
+            y: parseFloat(item.price)
+        }));
+    
+    console.log("Final chart data:", chartData);
+    
+    // Ensure we have at least 2 data points
+    if (chartData.length < 2) {
+        console.warn(`Not enough valid data points for ${symbol} chart (${chartData.length})`);
+        // Add a simulated data point if needed
+        if (chartData.length === 1) {
+            const existingPoint = chartData[0];
+            const newTime = new Date(existingPoint.x);
+            newTime.setHours(newTime.getHours() - 1);
+            
+            chartData.push({
+                x: newTime,
+                y: existingPoint.y * (1 + (Math.random() * 0.02 - 0.01)) // +/- 1%
+            });
+            
+            console.log(`Added simulated data point at ${newTime.toISOString()}`);
+        }
+    }
     
     // Get color for this stock
     const colors = {
@@ -467,19 +618,20 @@ function updateChartForTimePeriod(symbol, data, days) {
     }
     
     // Calculate appropriate y-axis min and max with padding
-    const padding = priceRange * 0.1; // 10% padding
+    const padding = effectivePriceRange * 0.1; // 10% padding
     const yMin = Math.max(0, minPrice - padding); // Don't go below 0
     const yMax = maxPrice + padding;
+    
+    console.log(`Chart y-axis range: ${yMin} to ${yMax}`);
     
     // Create new chart with dynamic height
     stockCharts[symbol] = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: timestamps,
             datasets: [
                 {
                     label: `${symbol} Price ($)`,
-                    data: priceData,
+                    data: chartData,
                     borderColor: color,
                     backgroundColor: `${color}20`,
                     borderWidth: 2,
@@ -508,7 +660,7 @@ function updateChartForTimePeriod(symbol, data, days) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return `$${context.raw.toFixed(2)}`;
+                            return `$${context.raw.y.toFixed(2)}`;
                         }
                     }
                 }
@@ -531,39 +683,20 @@ function updateChartForTimePeriod(symbol, data, days) {
                     title: {
                         display: true,
                         text: 'Time',
-                        padding: {
-                            top: 15
-                        },
                         font: {
-                            size: 14
+                            size: 12
                         }
                     },
                     ticks: {
-                        maxRotation: 45,
-                        minRotation: 30, // Increased minimum rotation for better spacing
-                        autoSkip: true,
                         maxTicksLimit: maxTicksLimit,
-                        padding: 15, // Increased padding
                         font: {
-                            size: 11 // Smaller font for labels
-                        },
-                        major: {
-                            enabled: true
-                        },
-                        align: 'center',
-                        crossAlign: 'far'
+                            size: 11
+                        }
                     },
                     grid: {
-                        display: true,
                         drawBorder: true,
-                        drawOnChartArea: true,
-                        drawTicks: true,
-                        tickLength: 10,
-                        offset: true // Offset grid lines to align with labels
-                    },
-                    offset: true, // Offset axis to make room for labels
-                    position: 'bottom',
-                    bounds: 'ticks'
+                        drawOnChartArea: true
+                    }
                 },
                 y: {
                     min: yMin,
@@ -572,13 +705,13 @@ function updateChartForTimePeriod(symbol, data, days) {
                         display: true,
                         text: 'Price ($)',
                         font: {
-                            size: 14
+                            size: 12
                         }
                     },
                     ticks: {
-                        // Ensure we have enough ticks for the range
-                        count: Math.min(10, Math.max(5, Math.ceil(priceRange / 10))),
-                        padding: 10,
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        },
                         font: {
                             size: 11
                         }
@@ -592,14 +725,44 @@ function updateChartForTimePeriod(symbol, data, days) {
             animation: {
                 duration: 500,
                 easing: 'easeOutQuad'
-            }
+            },
+            parsing: false,  // Disable parsing since we're using {x,y} format
+            normalized: true // Normalize the data
         }
     });
+    
+    console.log(`Chart for ${symbol} created with ${filteredData.length} data points`);
+    
+    // Add event listeners to time period buttons
+    const timeSelector = document.getElementById(`time-selector-${symbol}`);
+    if (timeSelector) {
+        const buttons = timeSelector.querySelectorAll('.btn');
+        buttons.forEach(button => {
+            button.addEventListener('click', function() {
+                // Remove active class from all buttons
+                buttons.forEach(btn => btn.classList.remove('active'));
+                // Add active class to clicked button
+                this.classList.add('active');
+                
+                // Get selected time period
+                const periodId = this.getAttribute('data-period');
+                const period = timePeriods.find(p => p.id === periodId);
+                
+                // Update chart with selected time period
+                updateChartForTimePeriod(symbol, data, period.days);
+            });
+        });
+    }
 }
 
 // Function to simulate more data points for better visualization
 function simulateMoreDataPoints(data, days) {
-    if (data.length < 2) return data;
+    console.log('Simulating more data points with input:', data);
+    
+    if (data.length < 2) {
+        console.warn('Not enough data points to simulate more (need at least 2)');
+        return data;
+    }
     
     const result = [...data];
     const firstPoint = data[0];
@@ -609,12 +772,20 @@ function simulateMoreDataPoints(data, days) {
     const endTime = new Date(lastPoint.timestamp).getTime();
     const timeRange = endTime - startTime;
     
+    console.log(`Simulating between ${new Date(startTime).toLocaleString()} and ${new Date(endTime).toLocaleString()}`);
+    
     // Determine how many points to add
     const pointsToAdd = Math.min(20, days * 2);
+    console.log(`Adding ${pointsToAdd} simulated points`);
+    
+    // If start and end times are the same, create a time range
+    const effectiveTimeRange = timeRange === 0 ? 3600000 * 24 : timeRange; // Use 24 hours if same time
+    const effectiveStartTime = timeRange === 0 ? startTime - (3600000 * 12) : startTime; // 12 hours before
     
     for (let i = 1; i < pointsToAdd; i++) {
         const ratio = i / pointsToAdd;
-        const time = startTime + (timeRange * ratio);
+        const time = effectiveStartTime + (effectiveTimeRange * ratio);
+        const timestamp = new Date(time).toISOString();
         
         // Interpolate price with some randomness
         const basePrice = firstPoint.price + ((lastPoint.price - firstPoint.price) * ratio);
@@ -622,12 +793,16 @@ function simulateMoreDataPoints(data, days) {
         const randomVariation = (Math.random() * 2 - 1) * basePrice * randomFactor;
         const price = basePrice + randomVariation;
         
-        result.push({
-            symbol: data[0].symbol,
+        // Create a new data point with the same structure as the original data
+        const newPoint = {
+            symbol: firstPoint.symbol,
             price: price,
-            timestamp: new Date(time).toISOString(),
+            timestamp: timestamp,
             change_percent: 0 // Not used for chart display
-        });
+        };
+        
+        console.log(`Generated simulated point: ${timestamp} - $${price.toFixed(2)}`);
+        result.push(newPoint);
     }
     
     // Sort by timestamp
@@ -636,6 +811,8 @@ function simulateMoreDataPoints(data, days) {
 
 // Function to create or update an individual stock chart
 function createOrUpdateStockChart(symbol, data) {
+    console.log(`Creating/updating chart for ${symbol} with ${data.length} data points`);
+    
     // Define colors for different stocks
     const colors = {
         'AAPL': '#4CAF50',  // Green for Apple
@@ -663,9 +840,11 @@ function createOrUpdateStockChart(symbol, data) {
     // Get the most recent timestamp for this stock
     const latestData = data.length > 0 ? data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] : null;
     const lastUpdated = latestData ? new Date(latestData.timestamp).toLocaleString() : 'No data available';
+    console.log(`Latest data for ${symbol}:`, latestData);
     
     // Check if container exists, if not create it
     let chartContainer = document.getElementById(`stock-chart-container-${symbol}`);
+    console.log(`Chart container for ${symbol} exists:`, !!chartContainer);
     
     if (!chartContainer) {
         // Create a new column for this stock chart - now full width

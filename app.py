@@ -43,7 +43,6 @@ def init_db():
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS laptop_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    cpu_temp INTEGER,
                     cpu_usage REAL,
                     memory_usage REAL,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -78,9 +77,9 @@ def receive_metrics():
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cur = conn.cursor()
                 cur.execute('''
-                    INSERT INTO laptop_metrics (cpu_temp, cpu_usage, memory_usage, last_updated)
-                    VALUES (?, ?, ?, ?)
-                ''', (data.get('cpu_temp'), data.get('cpu_usage'), data.get('memory_usage'), datetime.now()))
+                    INSERT INTO laptop_metrics (cpu_usage, memory_usage, last_updated)
+                    VALUES (?, ?, ?)
+                ''', (data.get('cpu_usage'), data.get('memory_usage'), datetime.now()))
                 conn.commit()
             logger.info("Successfully inserted metrics data into database")
             return jsonify({"message": "Metrics received"}), 200
@@ -237,27 +236,30 @@ def api_historical_stock_metrics():
             cur = conn.cursor()
             
             if symbol:
-                # Get historical data for a specific stock symbol (last 10 records)
+                # Get historical data for a specific stock symbol (last 30 records)
                 cur.execute('''
                     SELECT symbol, price, change_percent, timestamp 
                     FROM stock_metrics 
                     WHERE symbol = ?
                     ORDER BY timestamp DESC
-                    LIMIT 10
+                    LIMIT 30
                 ''', (symbol,))
             else:
-                # Get historical data for all symbols (last 10 records per symbol)
+                # Get historical data for all symbols (last 30 records per symbol)
                 cur.execute('''
-                    SELECT s1.symbol, s1.price, s1.change_percent, s1.timestamp
-                    FROM stock_metrics s1
-                    INNER JOIN (
-                        SELECT symbol, timestamp
+                    WITH ranked_data AS (
+                        SELECT 
+                            symbol, 
+                            price, 
+                            change_percent, 
+                            timestamp,
+                            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn
                         FROM stock_metrics
-                        GROUP BY symbol, timestamp
-                        ORDER BY timestamp DESC
-                        LIMIT 30
-                    ) s2 ON s1.symbol = s2.symbol AND s1.timestamp = s2.timestamp
-                    ORDER BY s1.timestamp ASC
+                    )
+                    SELECT symbol, price, change_percent, timestamp
+                    FROM ranked_data
+                    WHERE rn <= 30
+                    ORDER BY symbol, timestamp ASC
                 ''')
             
             rows = cur.fetchall()
