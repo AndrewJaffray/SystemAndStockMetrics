@@ -6,6 +6,8 @@
     <title>Metrics Dashboard</title>
     <!-- Include Bootstrap CSS -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Include Google Charts -->
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
     <!-- Custom styles -->
     <style>
         body {
@@ -26,6 +28,12 @@
         }
         .card {
             margin-bottom: 20px;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -60,6 +68,9 @@
                         <ul id="system-metrics" class="list-group">
                             <!-- Dynamically populated through JavaScript -->
                         </ul>
+                        <div class="chart-container">
+                            <div id="systemMetricsChart"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -74,6 +85,9 @@
                         <ul id="stock-metrics" class="list-group">
                             <!-- Dynamically populated through JavaScript -->
                         </ul>
+                        <div class="chart-container">
+                            <div id="stockMetricsChart"></div>
+                        </div>
                     </div>
                 </div>
             </div>

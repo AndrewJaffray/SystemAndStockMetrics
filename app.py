@@ -96,14 +96,13 @@ def api_metrics():
     try:
         with sqlite3.connect(DATABASE_PATH) as conn:
             cur = conn.cursor()
-            cur.execute('SELECT cpu_temp, cpu_usage, memory_usage, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
+            cur.execute('SELECT cpu_usage, memory_usage, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
             row = cur.fetchone()
             if row:
                 metric = {
-                    'cpu_temp': row[0],
-                    'cpu_usage': row[1],
-                    'memory_usage': row[2],
-                    'last_updated': row[3]
+                    'cpu_usage': row[0],
+                    'memory_usage': row[1],
+                    'last_updated': row[2]
                 }
                 logger.info(f"Retrieved latest metrics: {metric}")
             else:
@@ -178,6 +177,93 @@ def api_stock_metrics():
         logger.error(f"Error retrieving stock data: {e}")
     
     return jsonify(stocks)
+
+@app.route('/api/historical/system_metrics', methods=['GET'])
+def api_historical_system_metrics():
+    """Endpoint to get historical system metrics data for charts"""
+    metrics = []
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            conn.row_factory = sqlite3.Row  # This enables column access by name
+            cur = conn.cursor()
+            
+            # Get data from the last 24 hours (or adjust as needed)
+            cur.execute('''
+                SELECT cpu_usage, memory_usage, last_updated 
+                FROM laptop_metrics 
+                ORDER BY last_updated ASC
+                LIMIT 100
+            ''')
+            
+            rows = cur.fetchall()
+            for row in rows:
+                metrics.append({
+                    'cpu_usage': row['cpu_usage'],
+                    'memory_usage': row['memory_usage'],
+                    'timestamp': row['last_updated']
+                })
+            
+            if metrics:
+                logger.info(f"Retrieved {len(metrics)} historical system metrics records")
+            else:
+                logger.warning("No historical system metrics found in database")
+    except Exception as e:
+        logger.error(f"Error retrieving historical system metrics: {e}")
+    
+    return jsonify(metrics)
+
+@app.route('/api/historical/stock_metrics', methods=['GET'])
+def api_historical_stock_metrics():
+    """Endpoint to get historical stock metrics data for charts"""
+    symbol = request.args.get('symbol', None)
+    metrics = []
+    
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            
+            if symbol:
+                # Get historical data for a specific stock symbol (last 10 records)
+                cur.execute('''
+                    SELECT symbol, price, change_percent, last_updated 
+                    FROM stock_metrics 
+                    WHERE symbol = ?
+                    ORDER BY last_updated DESC
+                    LIMIT 10
+                ''', (symbol,))
+            else:
+                # Get historical data for all symbols (last 10 records per symbol)
+                cur.execute('''
+                    SELECT s1.symbol, s1.price, s1.change_percent, s1.last_updated
+                    FROM stock_metrics s1
+                    INNER JOIN (
+                        SELECT symbol, last_updated
+                        FROM stock_metrics
+                        GROUP BY symbol, last_updated
+                        ORDER BY last_updated DESC
+                        LIMIT 30
+                    ) s2 ON s1.symbol = s2.symbol AND s1.last_updated = s2.last_updated
+                    ORDER BY s1.last_updated ASC
+                ''')
+            
+            rows = cur.fetchall()
+            for row in rows:
+                metrics.append({
+                    'symbol': row['symbol'],
+                    'price': row['price'],
+                    'change_percent': row['change_percent'],
+                    'timestamp': row['last_updated']
+                })
+            
+            if metrics:
+                logger.info(f"Retrieved {len(metrics)} historical stock metrics records")
+            else:
+                logger.warning("No historical stock metrics found in database")
+    except Exception as e:
+        logger.error(f"Error retrieving historical stock metrics: {e}")
+    
+    return jsonify(metrics)
 
 @app.route('/')
 def index():
