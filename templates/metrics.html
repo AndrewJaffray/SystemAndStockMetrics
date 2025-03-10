@@ -6,8 +6,10 @@
     <title>Metrics Dashboard</title>
     <!-- Include Bootstrap CSS -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Include Google Charts -->
-    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <!-- Replace Google Charts with Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Add Chart.js adapter for date/time -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <!-- Custom styles -->
     <style>
         body {
@@ -35,6 +37,32 @@
             width: 100%;
             margin-top: 20px;
         }
+        .stock-chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+            margin-top: 15px;
+        }
+        .gauge-container {
+            position: relative;
+            height: 200px;
+            width: 100%;
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .gauge-label {
+            text-align: center;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .gauge-value {
+            position: absolute;
+            bottom: 40px;
+            font-size: 24px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -57,40 +85,61 @@
             </div>
         </div>
         
+        <!-- System Metrics Gauges Section -->
         <div class="row">
-            <!-- System Metrics Card -->
-            <div class="col-md-6">
+            <div class="col-md-12">
                 <div class="card">
                     <div class="card-header bg-primary text-white">
                         <i class="fas fa-laptop"></i> System Metrics
                     </div>
                     <div class="card-body">
-                        <ul id="system-metrics" class="list-group">
-                            <!-- Dynamically populated through JavaScript -->
-                        </ul>
-                        <div class="chart-container">
-                            <div id="systemMetricsChart"></div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="gauge-container">
+                                    <canvas id="cpuGauge"></canvas>
+                                </div>
+                                <div class="gauge-label">CPU Usage</div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="gauge-container">
+                                    <canvas id="memoryGauge"></canvas>
+                                </div>
+                                <div class="gauge-label">Memory Usage</div>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-12">
+                                <ul id="system-metrics" class="list-group">
+                                    <!-- Dynamically populated through JavaScript -->
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Stock Metrics Card -->
-            <div class="col-md-6">
+        </div>
+        
+        <!-- Stock Summary Card -->
+        <div class="row mt-4">
+            <div class="col-md-12">
                 <div class="card">
                     <div class="card-header bg-success text-white">
-                        <i class="fas fa-chart-line"></i> Stock Metrics
+                        <i class="fas fa-chart-line"></i> Stock Summary
                     </div>
                     <div class="card-body">
                         <ul id="stock-metrics" class="list-group">
                             <!-- Dynamically populated through JavaScript -->
                         </ul>
-                        <div class="chart-container">
-                            <div id="stockMetricsChart"></div>
-                        </div>
+                        <small class="text-muted" id="stock-last-updated"></small>
                     </div>
                 </div>
             </div>
+        </div>
+        
+        <!-- Individual Stock Charts Section -->
+        <h4 class="mt-4 mb-3">Individual Stock Performance</h4>
+        <div id="stock-charts-container" class="row">
+            <!-- Individual stock charts will be dynamically added here -->
         </div>
     </div>
 

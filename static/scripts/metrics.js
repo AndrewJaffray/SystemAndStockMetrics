@@ -1,15 +1,109 @@
-// Load Google Charts
-google.charts.load('current', {'packages':['corechart', 'line']});
-google.charts.setOnLoadCallback(onGoogleChartsLoaded);
-
 // Variables to store chart instances
-let systemMetricsChart = null;
-let stockMetricsChart = null;
+let cpuGauge = null;
+let memoryGauge = null;
+let stockCharts = {}; // Object to store individual stock charts by symbol
 
-// Called when Google Charts is loaded
-function onGoogleChartsLoaded() {
-    console.log('Google Charts loaded successfully');
+// Called when page is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Page loaded, fetching initial metrics');
+    // Initialize empty gauges
+    initGauges();
     fetchAllMetrics();
+});
+
+// Initialize the gauge charts with default values
+function initGauges() {
+    // Initialize CPU gauge
+    const cpuCtx = document.getElementById('cpuGauge').getContext('2d');
+    cpuGauge = createGaugeChart(cpuCtx, 0, '#6f9654');
+    
+    // Initialize Memory gauge
+    const memoryCtx = document.getElementById('memoryGauge').getContext('2d');
+    memoryGauge = createGaugeChart(memoryCtx, 0, '#1c91c0');
+    
+    // Add value displays
+    const cpuContainer = document.getElementById('cpuGauge').parentNode;
+    let cpuValue = cpuContainer.querySelector('.gauge-value');
+    if (!cpuValue) {
+        cpuValue = document.createElement('div');
+        cpuValue.className = 'gauge-value';
+        cpuValue.id = 'cpu-value';
+        cpuValue.textContent = '0%';
+        cpuContainer.appendChild(cpuValue);
+    }
+    
+    const memoryContainer = document.getElementById('memoryGauge').parentNode;
+    let memoryValue = memoryContainer.querySelector('.gauge-value');
+    if (!memoryValue) {
+        memoryValue = document.createElement('div');
+        memoryValue.className = 'gauge-value';
+        memoryValue.id = 'memory-value';
+        memoryValue.textContent = '0%';
+        memoryContainer.appendChild(memoryValue);
+    }
+    
+    console.log('Gauge charts initialized');
+}
+
+// Helper function to create a gauge chart
+function createGaugeChart(ctx, value, color) {
+    // Create gradient
+    const gradientSegment = ctx.createLinearGradient(0, 0, 0, 200);
+    gradientSegment.addColorStop(0, color);
+    gradientSegment.addColorStop(1, `${color}80`); // 50% opacity
+    
+    return new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [value, 100 - value],
+                backgroundColor: [gradientSegment, '#f0f0f0'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            circumference: 180,
+            rotation: -90,
+            cutout: '75%',
+            plugins: {
+                tooltip: {
+                    enabled: false
+                },
+                legend: {
+                    display: false
+                }
+            },
+            animation: {
+                animateRotate: true,
+                animateScale: false,
+                duration: 1000
+            },
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+// Update gauge chart with new value
+function updateGauge(gauge, valueElement, value) {
+    if (gauge) {
+        gauge.data.datasets[0].data = [value, 100 - value];
+        gauge.update();
+        
+        // Update the value display
+        if (valueElement) {
+            valueElement.textContent = `${value.toFixed(1)}%`;
+            
+            // Change color based on value
+            if (value < 50) {
+                valueElement.style.color = '#28a745'; // Green for low usage
+            } else if (value < 80) {
+                valueElement.style.color = '#ffc107'; // Yellow for medium usage
+            } else {
+                valueElement.style.color = '#dc3545'; // Red for high usage
+            }
+        }
+    }
 }
 
 function fetchSystemMetrics() {
@@ -32,6 +126,10 @@ function fetchSystemMetrics() {
             }, 1000);
 
             if (data && data.cpu_usage !== undefined) {
+                // Update gauge charts
+                updateGauge(cpuGauge, document.getElementById('cpu-value'), data.cpu_usage);
+                updateGauge(memoryGauge, document.getElementById('memory-value'), data.memory_usage);
+                
                 // CPU Usage
                 if (data.cpu_usage !== undefined && data.cpu_usage !== null) {
                     const cpuUsageElement = document.createElement('li');
@@ -115,10 +213,8 @@ function fetchStockMetrics() {
                 });
                 
                 // Last Updated Timestamp
-                const timestampElement = document.createElement('li');
-                timestampElement.classList.add('list-group-item', 'text-muted', 'small');
-                timestampElement.innerHTML = `Last stock update: ${new Date(stocks[0].last_updated).toLocaleString()}`;
-                stocksDiv.appendChild(timestampElement);
+                const lastUpdated = new Date(stocks[0].last_updated).toLocaleString();
+                document.getElementById('stock-last-updated').textContent = `Last stock update: ${lastUpdated}`;
                 
                 // Reset background color after a short delay
                 setTimeout(() => {
@@ -144,31 +240,49 @@ function fetchStockMetrics() {
         });
 }
 
-// Function to fetch historical system metrics and update chart
+// Function to fetch historical system metrics - no longer needed for gauge display
 function fetchHistoricalSystemMetrics() {
-    fetch('/api/historical/system_metrics')
-        .then(response => response.json())
-        .then(data => {
-            if (data && data.length > 0) {
-                updateSystemMetricsChart(data);
-                console.log('Historical system metrics updated:', data);
-            } else {
-                console.log('No historical system metrics data available');
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching historical system metrics:', error);
-        });
+    // We don't need historical data for gauges, but we'll keep the function
+    // to maintain compatibility with fetchAllMetrics
+    console.log('Historical system metrics not needed for gauges');
 }
 
-// Function to fetch historical stock metrics and update chart
+// Function to fetch historical stock metrics and update individual charts
 function fetchHistoricalStockMetrics() {
     fetch('/api/historical/stock_metrics')
         .then(response => response.json())
         .then(data => {
             if (data && data.length > 0) {
-                updateStockMetricsChart(data);
-                console.log('Historical stock metrics updated:', data);
+                // Get unique stock symbols
+                const stockSymbols = [...new Set(data.map(item => item.symbol))];
+                
+                // Create or update individual charts for each stock
+                stockSymbols.forEach(symbol => {
+                    // Filter data for this specific stock
+                    const stockData = data.filter(item => item.symbol === symbol);
+                    
+                    // Create or update chart for this stock
+                    createOrUpdateStockChart(symbol, stockData);
+                });
+                
+                // Remove charts for stocks that no longer exist in the data
+                Object.keys(stockCharts).forEach(symbol => {
+                    if (!stockSymbols.includes(symbol)) {
+                        // Destroy chart
+                        if (stockCharts[symbol]) {
+                            stockCharts[symbol].destroy();
+                            delete stockCharts[symbol];
+                        }
+                        
+                        // Remove chart container
+                        const chartContainer = document.getElementById(`stock-chart-container-${symbol}`);
+                        if (chartContainer) {
+                            chartContainer.remove();
+                        }
+                    }
+                });
+                
+                console.log('Historical stock metrics updated for individual charts');
             } else {
                 console.log('No historical stock metrics data available');
             }
@@ -178,140 +292,128 @@ function fetchHistoricalStockMetrics() {
         });
 }
 
-// Function to update the system metrics chart using Google Charts
-function updateSystemMetricsChart(data) {
-    try {
-        // Prepare data for Google Charts
-        const chartData = new google.visualization.DataTable();
-        chartData.addColumn('datetime', 'Time');
-        chartData.addColumn('number', 'CPU Usage (%)');
-        chartData.addColumn('number', 'Memory Usage (%)');
+// Function to create or update an individual stock chart
+function createOrUpdateStockChart(symbol, data) {
+    // Define colors for different stocks
+    const colors = {
+        'AAPL': '#4CAF50',  // Green for Apple
+        'GOOGL': '#2196F3', // Blue for Google
+        'MSFT': '#F44336',  // Red for Microsoft
+        'AMZN': '#FF9800',  // Orange for Amazon
+        'META': '#9C27B0',  // Purple for Meta
+        'TSLA': '#00BCD4',  // Cyan for Tesla
+        'default': '#607D8B' // Default gray
+    };
+    
+    // Get color for this stock
+    const color = colors[symbol] || colors.default;
+    
+    // Check if container exists, if not create it
+    let chartContainer = document.getElementById(`stock-chart-container-${symbol}`);
+    
+    if (!chartContainer) {
+        // Create a new column for this stock chart
+        const column = document.createElement('div');
+        column.className = 'col-md-6 mb-4';
+        column.id = `stock-chart-container-${symbol}`;
         
-        // Add rows to the data table
-        const rows = data.map(item => [
-            new Date(item.timestamp),
-            item.cpu_usage,
-            item.memory_usage
-        ]);
+        // Create card for the chart
+        column.innerHTML = `
+            <div class="card">
+                <div class="card-header" style="background-color: ${color}20; border-color: ${color}">
+                    <strong>${symbol}</strong> Stock Price
+                </div>
+                <div class="card-body">
+                    <canvas id="stock-chart-${symbol}"></canvas>
+                </div>
+            </div>
+        `;
         
-        chartData.addRows(rows);
+        // Add to the container
+        document.getElementById('stock-charts-container').appendChild(column);
         
-        // Set chart options
-        const options = {
-            title: 'System Metrics Over Time',
-            curveType: 'function',
-            legend: { position: 'bottom' },
-            hAxis: {
-                title: 'Time',
-                format: 'HH:mm',
-                gridlines: { count: 5 }
-            },
-            vAxis: {
-                title: 'Percentage (%)',
-                minValue: 0,
-                maxValue: 100
-            },
-            colors: ['#6f9654', '#1c91c0'],
-            height: 300
-        };
-        
-        // Instantiate and draw the chart
-        const chart = new google.visualization.LineChart(document.getElementById('systemMetricsChart'));
-        chart.draw(chartData, options);
-        
-        console.log('System metrics chart updated successfully');
-    } catch (error) {
-        console.error('Error updating system metrics chart:', error);
+        // Update reference to the container
+        chartContainer = column;
     }
-}
-
-// Function to update the stock metrics chart using Google Charts
-function updateStockMetricsChart(data) {
-    try {
-        // Group data by stock symbol
-        const stockSymbols = [...new Set(data.map(item => item.symbol))];
-        
-        // Prepare data for Google Charts
-        const chartData = new google.visualization.DataTable();
-        chartData.addColumn('datetime', 'Time');
-        
-        // Add a column for each stock symbol
-        stockSymbols.forEach(symbol => {
-            chartData.addColumn('number', `${symbol} Price ($)`);
-        });
-        
-        // Get unique timestamps and sort them
-        const timestamps = [...new Set(data.map(item => item.timestamp))].sort();
-        
-        // Create rows with data for each timestamp
-        const rows = timestamps.map(timestamp => {
-            const row = [new Date(timestamp)];
-            
-            // Add price for each stock symbol
-            stockSymbols.forEach(symbol => {
-                const stockData = data.find(item => item.symbol === symbol && item.timestamp === timestamp);
-                row.push(stockData ? stockData.price : null);
-            });
-            
-            return row;
-        });
-        
-        chartData.addRows(rows);
-        
-        // Define a set of distinct colors for the lines
-        const colors = ['#2196F3', '#4CAF50', '#F44336', '#FFC107', '#9C27B0', '#00BCD4'];
-        
-        // Set chart options
-        const options = {
-            title: 'Stock Prices Over Time',
-            curveType: 'function',
-            legend: { position: 'bottom' },
-            hAxis: {
-                title: 'Time',
-                format: 'HH:mm:ss',
-                gridlines: { count: 8 },
-                minTextSpacing: 50
+    
+    // Get canvas context
+    const ctx = document.getElementById(`stock-chart-${symbol}`).getContext('2d');
+    
+    // Prepare data for Chart.js
+    const timestamps = data.map(item => new Date(item.timestamp));
+    const prices = data.map(item => item.price);
+    
+    // Destroy previous chart if it exists
+    if (stockCharts[symbol]) {
+        stockCharts[symbol].destroy();
+    }
+    
+    // Create new chart
+    stockCharts[symbol] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: timestamps,
+            datasets: [
+                {
+                    label: `${symbol} Price ($)`,
+                    data: prices,
+                    borderColor: color,
+                    backgroundColor: `${color}20`,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false // Hide legend since we have the symbol in the card header
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `$${context.raw.toFixed(2)}`;
+                        }
+                    }
+                }
             },
-            vAxis: {
-                title: 'Price ($)'
-            },
-            height: 300,
-            chartArea: {
-                width: '85%',
-                height: '70%'
-            },
-            interpolateNulls: true,
-            lineWidth: 3,
-            pointSize: 4,
-            series: stockSymbols.reduce((acc, symbol, index) => {
-                acc[index] = {
-                    color: colors[index % colors.length],
-                    lineDashStyle: [1, 0],  // Solid line
-                    pointShape: 'circle'
-                };
-                return acc;
-            }, {}),
-            animation: {
-                duration: 500,
-                easing: 'out',
-                startup: true
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'minute',
+                        displayFormats: {
+                            minute: 'HH:mm'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Price ($)'
+                    }
+                }
             }
-        };
-        
-        // Instantiate and draw the chart
-        const chart = new google.visualization.LineChart(document.getElementById('stockMetricsChart'));
-        chart.draw(chartData, options);
-        
-        console.log('Stock metrics chart updated successfully');
-    } catch (error) {
-        console.error('Error updating stock metrics chart:', error);
-    }
+        }
+    });
+    
+    console.log(`Chart for ${symbol} created/updated`);
 }
 
 // Fetch all metrics
 function fetchAllMetrics() {
     fetchSystemMetrics();
     fetchStockMetrics();
+    // We still call this for compatibility, but it doesn't do anything now
     fetchHistoricalSystemMetrics();
     fetchHistoricalStockMetrics();
 }
@@ -319,9 +421,3 @@ function fetchAllMetrics() {
 // Fetch metrics every 10 seconds instead of 30
 const intervalId = setInterval(fetchAllMetrics, 10000);
 console.log('Metrics update interval set:', intervalId);
-
-// Fetch metrics on page load
-window.onload = function() {
-    console.log('Page loaded, fetching initial metrics');
-    fetchAllMetrics();
-};
