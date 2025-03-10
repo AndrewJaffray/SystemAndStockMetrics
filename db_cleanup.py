@@ -61,7 +61,7 @@ def cleanup_database(days_to_keep=7):
             laptop_deleted = cursor.rowcount
             
             # Delete old records from stock_metrics
-            cursor.execute("DELETE FROM stock_metrics WHERE last_updated < ?;", (cutoff_str,))
+            cursor.execute("DELETE FROM stock_metrics WHERE timestamp < ?;", (cutoff_str,))
             stock_deleted = cursor.rowcount
             
             # Commit the changes

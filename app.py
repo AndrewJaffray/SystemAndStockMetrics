@@ -57,7 +57,7 @@ def init_db():
                     symbol TEXT,
                     price REAL,
                     change_percent REAL,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
         logger.info("Database Initialized successfully.")
@@ -119,24 +119,37 @@ def receive_stock_metrics():
         try:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cur = conn.cursor()
+                records_inserted = 0
                 
                 # Check if we have data for multiple stocks
                 if isinstance(data, list):
                     for stock in data:
                         cur.execute('''
-                            INSERT INTO stock_metrics (symbol, price, change_percent, last_updated)
+                            INSERT INTO stock_metrics (symbol, price, change_percent, timestamp)
                             VALUES (?, ?, ?, ?)
-                        ''', (stock.get('symbol'), stock.get('price'), stock.get('change_percent'), datetime.now()))
+                        ''', (
+                            stock.get('symbol'), 
+                            stock.get('price'), 
+                            stock.get('change_percent'), 
+                            stock.get('timestamp')
+                        ))
+                        records_inserted += 1
                 else:
                     # Single stock data
                     cur.execute('''
-                        INSERT INTO stock_metrics (symbol, price, change_percent, last_updated)
+                        INSERT INTO stock_metrics (symbol, price, change_percent, timestamp)
                         VALUES (?, ?, ?, ?)
-                    ''', (data.get('symbol'), data.get('price'), data.get('change_percent'), datetime.now()))
+                    ''', (
+                        data.get('symbol'), 
+                        data.get('price'), 
+                        data.get('change_percent'), 
+                        data.get('timestamp')
+                    ))
+                    records_inserted += 1
                 
                 conn.commit()
-            logger.info("Successfully inserted stock metrics data into database")
-            return jsonify({"message": "Stock metrics received"}), 200
+            logger.info(f"Successfully inserted {records_inserted} stock metrics records into database")
+            return jsonify({"status": "success", "records_inserted": records_inserted}), 201
         except Exception as e:
             logger.error(f"Error inserting stock metrics data: {e}")
             return jsonify({"error": f"Database error: {str(e)}"}), 500
@@ -151,7 +164,7 @@ def api_stock_metrics():
             cur = conn.cursor()
             # Get the latest data for each stock symbol
             cur.execute('''
-                SELECT s1.symbol, s1.price, s1.change_percent, s1.last_updated
+                SELECT s1.symbol, s1.price, s1.change_percent, s1.timestamp
                 FROM stock_metrics s1
                 JOIN (
                     SELECT symbol, MAX(id) as max_id
@@ -166,7 +179,7 @@ def api_stock_metrics():
                     'symbol': row[0],
                     'price': row[1],
                     'change_percent': row[2],
-                    'last_updated': row[3]
+                    'timestamp': row[3]
                 })
             
             if stocks:
@@ -226,25 +239,25 @@ def api_historical_stock_metrics():
             if symbol:
                 # Get historical data for a specific stock symbol (last 10 records)
                 cur.execute('''
-                    SELECT symbol, price, change_percent, last_updated 
+                    SELECT symbol, price, change_percent, timestamp 
                     FROM stock_metrics 
                     WHERE symbol = ?
-                    ORDER BY last_updated DESC
+                    ORDER BY timestamp DESC
                     LIMIT 10
                 ''', (symbol,))
             else:
                 # Get historical data for all symbols (last 10 records per symbol)
                 cur.execute('''
-                    SELECT s1.symbol, s1.price, s1.change_percent, s1.last_updated
+                    SELECT s1.symbol, s1.price, s1.change_percent, s1.timestamp
                     FROM stock_metrics s1
                     INNER JOIN (
-                        SELECT symbol, last_updated
+                        SELECT symbol, timestamp
                         FROM stock_metrics
-                        GROUP BY symbol, last_updated
-                        ORDER BY last_updated DESC
+                        GROUP BY symbol, timestamp
+                        ORDER BY timestamp DESC
                         LIMIT 30
-                    ) s2 ON s1.symbol = s2.symbol AND s1.last_updated = s2.last_updated
-                    ORDER BY s1.last_updated ASC
+                    ) s2 ON s1.symbol = s2.symbol AND s1.timestamp = s2.timestamp
+                    ORDER BY s1.timestamp ASC
                 ''')
             
             rows = cur.fetchall()
@@ -253,7 +266,7 @@ def api_historical_stock_metrics():
                     'symbol': row['symbol'],
                     'price': row['price'],
                     'change_percent': row['change_percent'],
-                    'timestamp': row['last_updated']
+                    'timestamp': row['timestamp']
                 })
             
             if metrics:

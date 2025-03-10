@@ -65,15 +65,29 @@
         }
         /* Add styles for individual stock charts */
         #stock-charts-container .card-body {
-            height: 350px; /* Set fixed height for chart containers */
+            min-height: 400px; /* Increased minimum height */
+            height: auto; /* Allow height to grow */
             padding: 15px;
+            padding-bottom: 60px; /* Extra padding at bottom for x-axis labels */
+            transition: height 0.5s ease; /* Smooth transition for height changes */
+            position: relative; /* For proper canvas positioning */
+            overflow: visible; /* Allow content to overflow for axis labels */
+        }
+        #stock-charts-container canvas {
+            width: 100% !important;
+            height: calc(100% - 100px) !important; /* Increased space for controls and axis labels */
+            margin-bottom: 40px; /* More space for x-axis labels */
         }
         #stock-charts-container .card {
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease;
+            transition: all 0.3s ease;
+            margin-bottom: 50px; /* Increased bottom margin */
+            overflow: visible; /* Allow content to overflow for axis labels */
+            border-radius: 8px;
         }
         #stock-charts-container .card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
         }
         /* Style for stock last updated timestamp */
         .stock-last-updated {
@@ -125,6 +139,25 @@
         .stock-change-negative {
             background-color: rgba(220, 53, 69, 0.1);
             color: #dc3545;
+        }
+        /* Fix for x-axis labels */
+        .chart-js-render-monitor {
+            margin-bottom: 40px !important; /* Increased margin */
+        }
+        /* Ensure chart container has enough space */
+        @media (min-width: 768px) {
+            #stock-charts-container .card-body {
+                padding-bottom: 60px; /* Increased padding */
+            }
+        }
+        /* Fix for Chart.js axis labels */
+        canvas {
+            position: relative;
+            z-index: 1;
+        }
+        /* Add space after the last chart */
+        #stock-charts-container {
+            margin-bottom: 60px;
         }
     </style>
 </head>
