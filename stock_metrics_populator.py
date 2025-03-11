@@ -67,8 +67,8 @@ def fetch_stock_data(symbol):
 
 def send_stock_metrics():
     """Fetches stock data for all symbols and sends it to the server."""
-    server_url = 'http://127.0.0.1:5001/stock_metrics'
-    #server_url = 'https://AndrewJaffray.pythonanywhere.com/stock_metrics'
+    #server_url = 'http://127.0.0.1:5001/stock_metrics'
+    server_url = 'https://AndrewJaffray.pythonanywhere.com/stock_metrics'
     
     logger.info(f"Starting stock metrics collection service, sending to: {server_url}")
     logger.info(f"Monitoring symbols: {', '.join(STOCK_SYMBOLS)}")

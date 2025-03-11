@@ -69,8 +69,8 @@ def gather_metrics():
 
 def send_metrics():
     """Sends gathered metrics to the Flask server."""
-    url = 'http://127.0.0.1:5001/metrics'
-    #url = 'https://AndrewJaffray.pythonanywhere.com/metrics'
+    #url = 'http://127.0.0.1:5001/metrics'
+    url = 'https://AndrewJaffray.pythonanywhere.com/metrics'
 
     logger.info(f"Starting metrics collection service, sending to: {url}")
     

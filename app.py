@@ -65,29 +65,8 @@ def init_db():
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
 
-# Function to migrate database schema
-def migrate_db():
-    try:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            
-            # Check if computer_id column exists in laptop_metrics table
-            cursor.execute("PRAGMA table_info(laptop_metrics)")
-            columns = [column[1] for column in cursor.fetchall()]
-            
-            if 'computer_id' not in columns:
-                logger.info("Adding computer_id column to laptop_metrics table")
-                conn.execute("ALTER TABLE laptop_metrics ADD COLUMN computer_id TEXT")
-                conn.commit()
-                logger.info("Migration completed successfully")
-            else:
-                logger.info("computer_id column already exists, no migration needed")
-    except Exception as e:
-        logger.error(f"Error migrating database: {e}")
-
-# Initialize and migrate the database
+# Initialize the database
 init_db()
-migrate_db()
 
 @app.route('/metrics', methods=['POST'])
 def receive_metrics():
