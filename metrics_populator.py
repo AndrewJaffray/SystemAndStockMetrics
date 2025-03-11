@@ -1,15 +1,14 @@
 import psutil
-import requests
-import time
-import logging
-from logging.handlers import RotatingFileHandler
-import json
-import platform
-import subprocess
 import os
 import uuid
 import socket
 from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Import from our utility module and config
+from collector_utils import CollectorBase
+from config import SYSTEM_METRICS_ENDPOINT, METRICS_STATUS_ENDPOINT
 
 # Define the base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -64,38 +63,22 @@ def gather_metrics():
     
     # Add timestamp for logging purposes
     metrics['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    
+    logger.info(f"Gathered metrics: CPU {metrics['cpu_usage']}%, Memory {metrics['memory_usage']}%")
     return metrics
 
-def send_metrics():
-    """Sends gathered metrics to the Flask server."""
-    #url = 'http://127.0.0.1:5001/metrics'
-    url = 'https://AndrewJaffray.pythonanywhere.com/metrics'
-
-    logger.info(f"Starting metrics collection service, sending to: {url}")
+def main():
+    """Main function to start the metrics collection service."""
+    # Create a collector instance
+    collector = CollectorBase(
+        endpoint_url=SYSTEM_METRICS_ENDPOINT,
+        status_url=METRICS_STATUS_ENDPOINT,
+        collection_interval=5,  # 5 seconds between collections
+        collector_name="SystemMetrics"
+    )
     
-    while True:
-        metrics = gather_metrics()
-        
-        # Log the metrics being sent
-        logger.info(f"Sending metrics: {json.dumps(metrics, indent=2)}")
-        
-        try:
-            response = requests.post(url, json=metrics)
-            
-            # Log the response
-            logger.info(f"Response Status Code: {response.status_code}")
-            logger.info(f"Response Text: {response.text}")
-            
-            try:
-                logger.info(f"Response JSON: {response.json()}")
-            except requests.JSONDecodeError as e:
-                logger.error(f"JSONDecodeError: {e}")
-        except Exception as e:
-            logger.error(f"Error sending metrics: {e}")
-        
-        logger.info(f"Waiting 5 seconds before next metrics collection...")
-        time.sleep(5)  # Wait for 5 seconds before sending the next batch
+    # Run the collection loop
+    collector.run_collection_loop(gather_metrics)
 
 if __name__ == "__main__":
-    send_metrics()
+    main()

@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Global variable to track the stop command state
+# This will be used for polling by the metrics_populator
+METRICS_STOP_COMMAND = False
+
 # Define the database path
 DATABASE_PATH = os.path.join(BASE_DIR, 'database.db')
 logger.info(f"Database path: {DATABASE_PATH}")
@@ -46,7 +50,7 @@ def init_db():
                     computer_id TEXT,
                     cpu_usage REAL,
                     memory_usage REAL,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
@@ -78,7 +82,7 @@ def receive_metrics():
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cur = conn.cursor()
                 cur.execute('''
-                    INSERT INTO laptop_metrics (computer_id, cpu_usage, memory_usage, last_updated)
+                    INSERT INTO laptop_metrics (computer_id, cpu_usage, memory_usage, timestamp)
                     VALUES (?, ?, ?, ?)
                 ''', (data.get('computer_id', 'unknown'), data.get('cpu_usage'), data.get('memory_usage'), datetime.now()))
                 conn.commit()
@@ -96,7 +100,7 @@ def api_metrics():
     try:
         with sqlite3.connect(DATABASE_PATH) as conn:
             cur = conn.cursor()
-            cur.execute('SELECT computer_id, cpu_usage, memory_usage, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
+            cur.execute('SELECT computer_id, cpu_usage, memory_usage, timestamp FROM laptop_metrics ORDER BY id DESC LIMIT 1')
             row = cur.fetchone()
             if row:
                 metric = {
@@ -202,9 +206,9 @@ def api_historical_system_metrics():
             
             # Get data from the last 24 hours (or adjust as needed)
             cur.execute('''
-                SELECT cpu_usage, memory_usage, last_updated 
+                SELECT cpu_usage, memory_usage, timestamp 
                 FROM laptop_metrics 
-                ORDER BY last_updated ASC
+                ORDER BY timestamp ASC
                 LIMIT 100
             ''')
             
@@ -213,7 +217,7 @@ def api_historical_system_metrics():
                 metrics.append({
                     'cpu_usage': row['cpu_usage'],
                     'memory_usage': row['memory_usage'],
-                    'timestamp': row['last_updated']
+                    'timestamp': row['timestamp']
                 })
             
             if metrics:
@@ -228,7 +232,6 @@ def api_historical_system_metrics():
 @app.route('/api/historical/stock_metrics', methods=['GET'])
 def api_historical_stock_metrics():
     """Endpoint to get historical stock metrics data for charts"""
-    symbol = request.args.get('symbol', None)
     metrics = []
     
     try:
@@ -236,32 +239,22 @@ def api_historical_stock_metrics():
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             
-            if symbol:
-                # Get historical data for a specific stock symbol (last 30 records)
-                cur.execute('''
-                    SELECT symbol, price, change_percent, timestamp 
-                    FROM stock_metrics 
-                    WHERE symbol = ?
-                    ORDER BY timestamp DESC
-                    LIMIT 30
-                ''', (symbol,))
-            else:
-                # Get historical data for all symbols (last 30 records per symbol)
-                cur.execute('''
-                    WITH ranked_data AS (
-                        SELECT 
-                            symbol, 
-                            price, 
-                            change_percent, 
-                            timestamp,
-                            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn
-                        FROM stock_metrics
-                    )
-                    SELECT symbol, price, change_percent, timestamp
-                    FROM ranked_data
-                    WHERE rn <= 30
-                    ORDER BY symbol, timestamp ASC
-                ''')
+            # Get historical data for all symbols (100 records per symbol)
+            cur.execute('''
+                WITH ranked_data AS (
+                    SELECT 
+                        symbol, 
+                        price, 
+                        change_percent, 
+                        timestamp,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY timestamp DESC) as rn
+                    FROM stock_metrics
+                )
+                SELECT symbol, price, change_percent, timestamp
+                FROM ranked_data
+                WHERE rn <= 300
+                ORDER BY symbol, timestamp ASC
+            ''')
             
             rows = cur.fetchall()
             for row in rows:
@@ -296,18 +289,18 @@ def api_system_metrics_table():
             if computer_id:
                 # Get data for a specific computer
                 cur.execute('''
-                    SELECT id, computer_id, cpu_usage, memory_usage, last_updated 
+                    SELECT id, computer_id, cpu_usage, memory_usage, timestamp 
                     FROM laptop_metrics 
                     WHERE computer_id = ?
-                    ORDER BY last_updated DESC
+                    ORDER BY timestamp DESC
                     LIMIT ?
                 ''', (computer_id, limit))
             else:
                 # Get data for all computers
                 cur.execute('''
-                    SELECT id, computer_id, cpu_usage, memory_usage, last_updated 
+                    SELECT id, computer_id, cpu_usage, memory_usage, timestamp 
                     FROM laptop_metrics 
-                    ORDER BY last_updated DESC
+                    ORDER BY timestamp DESC
                     LIMIT ?
                 ''', (limit,))
             
@@ -318,7 +311,7 @@ def api_system_metrics_table():
                     'computer_id': row['computer_id'],
                     'cpu_usage': row['cpu_usage'],
                     'memory_usage': row['memory_usage'],
-                    'timestamp': row['last_updated']
+                    'timestamp': row['timestamp']
                 })
             
             if metrics:
@@ -337,6 +330,34 @@ def index():
 @app.route('/metrics', methods=['GET'])
 def display_metrics():
     return render_template('metrics.html')
+
+@app.route('/api/metrics/stop', methods=['POST'])
+def toggle_metrics_stop():
+    """Endpoint to toggle the stop command for metrics populator"""
+    global METRICS_STOP_COMMAND
+    
+    # Toggle the state
+    METRICS_STOP_COMMAND = not METRICS_STOP_COMMAND
+    
+    current_state = "STOP" if METRICS_STOP_COMMAND else "RUN"
+    logger.info(f"Metrics populator command set to: {current_state}")
+    
+    return jsonify({
+        "status": "success",
+        "command": current_state
+    })
+
+@app.route('/api/metrics/status', methods=['GET'])
+def get_metrics_status():
+    """Endpoint for the metrics populator to check if it should stop"""
+    global METRICS_STOP_COMMAND
+    
+    # Return the current state
+    current_state = "STOP" if METRICS_STOP_COMMAND else "RUN"
+    
+    return jsonify({
+        "command": current_state
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

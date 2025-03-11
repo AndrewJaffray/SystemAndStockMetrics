@@ -168,6 +168,84 @@
         .refresh-btn {
             margin-bottom: 15px;
         }
+        
+        /* New styles for improved tooltips and stock display */
+        .badge[title] {
+            cursor: help;
+            position: relative;
+        }
+        
+        .badge[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 100;
+            margin-bottom: 5px;
+        }
+        
+        /* Enhanced tooltip style for Chart.js */
+        #tooltip-element {
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 0.9rem;
+            pointer-events: none;
+            max-width: 200px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+        }
+        
+        /* Larger change percentage for better visibility */
+        .stock-change-display {
+            font-size: 1.1rem;
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 15px;
+            transition: all 0.2s;
+        }
+        
+        .stock-change-display:hover {
+            transform: scale(1.05);
+        }
+        
+        /* Stock summary card in green to match header */
+        .card-header.bg-success {
+            background: linear-gradient(to right, #28a745, #20c997) !important;
+            color: white;
+            font-weight: bold;
+        }
+        
+        /* Legend for percentage changes */
+        .percentage-legend {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            margin: 10px 0;
+            font-size: 0.85rem;
+        }
+        
+        .percentage-legend-item {
+            display: flex;
+            align-items: center;
+            margin-left: 15px;
+        }
+        
+        .percentage-legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -184,6 +262,36 @@
                         <div>
                             <small id="last-update" class="text-dark">Last update: Never</small>
                             <span id="update-indicator" class="update-indicator"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Control Panel Section -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <i class="fas fa-cogs"></i> Control Panel
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <button id="toggle-metrics" class="btn btn-danger btn-block">
+                                    <i class="fas fa-stop-circle"></i> Stop Metrics Collection
+                                </button>
+                                <small class="text-muted mt-2 d-block">
+                                    This will stop the metrics collection script running on your local machine.
+                                    You'll need to manually restart it if you want to resume collection.
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="alert alert-secondary">
+                                    <strong>Metrics Collection Status:</strong>
+                                    <span id="metrics-status" class="badge badge-success ml-2">Running</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -260,13 +368,27 @@
             <div class="col-md-12">
                 <div class="card">
                     <div class="card-header bg-success text-white">
-                        <i class="fas fa-chart-line"></i> Stock Summary
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-chart-line"></i> Stock Summary
+                            </div>
+                            <div class="percentage-legend">
+                                <div class="percentage-legend-item">
+                                    <div class="percentage-legend-color" style="background-color: #28a745;"></div>
+                                    <span>Daily Gain %</span>
+                                </div>
+                                <div class="percentage-legend-item">
+                                    <div class="percentage-legend-color" style="background-color: #dc3545;"></div>
+                                    <span>Daily Loss %</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="card-body">
                         <ul id="stock-metrics" class="list-group">
                             <!-- Dynamically populated through JavaScript -->
                         </ul>
-                        <small class="text-muted" id="stock-last-updated"></small>
+                        <small class="text-muted mt-2" id="stock-last-updated"></small>
                     </div>
                 </div>
             </div>

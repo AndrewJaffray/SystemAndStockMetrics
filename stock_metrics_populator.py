@@ -1,11 +1,19 @@
 import requests
-import time
 import logging
 from logging.handlers import RotatingFileHandler
 import json
 import os
 from datetime import datetime
-from config import STOCK_SYMBOLS, STOCK_API_INTERVAL, FINNHUB_API_KEY
+
+# Import from our utility module and config
+from collector_utils import CollectorBase
+from config import (
+    STOCK_SYMBOLS, 
+    STOCK_API_INTERVAL, 
+    FINNHUB_API_KEY, 
+    STOCK_METRICS_ENDPOINT,
+    METRICS_STATUS_ENDPOINT
+)
 
 # Define the base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -65,43 +73,34 @@ def fetch_stock_data(symbol):
         logger.error(f"Exception fetching data for {symbol}: {e}")
         return None
 
-def send_stock_metrics():
-    """Fetches stock data for all symbols and sends it to the server."""
-    #server_url = 'http://127.0.0.1:5001/stock_metrics'
-    server_url = 'https://AndrewJaffray.pythonanywhere.com/stock_metrics'
+def gather_stock_metrics():
+    """Gathers stock metrics for all configured symbols."""
+    all_stock_data = []
     
-    logger.info(f"Starting stock metrics collection service, sending to: {server_url}")
-    logger.info(f"Monitoring symbols: {', '.join(STOCK_SYMBOLS)}")
+    # Fetch data for each symbol
+    for symbol in STOCK_SYMBOLS:
+        stock_data = fetch_stock_data(symbol)
+        if stock_data:
+            all_stock_data.append(stock_data)
+        
+        # Small delay between API calls to avoid rate limits
+        import time
+        time.sleep(1)
     
-    while True:
-        all_stock_data = []
-        
-        # Fetch data for each symbol
-        for symbol in STOCK_SYMBOLS:
-            stock_data = fetch_stock_data(symbol)
-            if stock_data:
-                all_stock_data.append(stock_data)
-            
-            # Sleep between API calls to avoid hitting rate limits
-            # Finnhub allows 60 calls per minute on free tier, so we can be more aggressive
-            logger.info(f"Sleeping 1 second between API calls")
-            time.sleep(1)
-        
-        # Send all stock data to the server
-        if all_stock_data:
-            try:
-                logger.info(f"Sending stock data to server: {json.dumps(all_stock_data, indent=2)}")
-                response = requests.post(server_url, json=all_stock_data)
-                logger.info(f"Sent stock data to server. Response: {response.status_code}")
-                logger.info(f"Response Text: {response.text}")
-            except Exception as e:
-                logger.error(f"Error sending stock data to server: {e}")
-        else:
-            logger.warning("No stock data collected to send to server")
-        
-        # Wait before the next batch of requests
-        logger.info(f"Waiting {STOCK_API_INTERVAL} seconds before next update...")
-        time.sleep(STOCK_API_INTERVAL)
+    return all_stock_data if all_stock_data else None
+
+def main():
+    """Main function to start the stock metrics collection service."""
+    # Create a collector instance
+    collector = CollectorBase(
+        endpoint_url=STOCK_METRICS_ENDPOINT,
+        status_url=METRICS_STATUS_ENDPOINT,  # Allow stopping stock metrics collection too
+        collection_interval=STOCK_API_INTERVAL,
+        collector_name="StockMetrics"
+    )
+    
+    # Run the collection loop
+    collector.run_collection_loop(gather_stock_metrics)
 
 if __name__ == "__main__":
-    send_stock_metrics() 
+    main() 

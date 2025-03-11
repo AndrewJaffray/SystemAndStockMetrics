@@ -4,6 +4,22 @@ let memoryGauge = null;
 let stockCharts = {}; // Object to store individual stock charts by symbol
 let stockData = {}; // Object to store stock data by symbol
 let systemMetricsTable = null; // DataTable instance for system metrics
+let metricsRunning = true; // Track if metrics collection is running
+
+// API configuration
+// Set to empty string to use relative URLs (current domain)
+// Set to full URL (e.g., "https://yourusername.pythonanywhere.com") to force a specific domain
+const API_BASE_URL = "https://AndrewJaffray.pythonanywhere.com";  // Empty = use current domain
+
+// Define time periods for stock charts
+const timePeriods = [
+    { id: '1', label: '1D', days: 1 },
+    { id: '7', label: '1W', days: 7 },
+    { id: '30', label: '1M', days: 30 },
+    { id: '90', label: '3M', days: 90 },
+    { id: '365', label: '1Y', days: 365 },
+    { id: 'all', label: 'ALL', days: 9999 }
+];
 
 // Called when page is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -23,6 +39,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up refresh button for system metrics table
     document.getElementById('refresh-system-table').addEventListener('click', function() {
         fetchSystemMetricsForTable();
+    });
+    
+    // Set up toggle button for metrics collection
+    document.getElementById('toggle-metrics').addEventListener('click', function() {
+        toggleMetricsCollection();
     });
 });
 
@@ -122,7 +143,7 @@ function updateGauge(gauge, valueElement, value) {
 }
 
 function fetchSystemMetrics() {
-    fetch('/api/metrics')
+    fetch(`${API_BASE_URL}/api/metrics`)
         .then(response => response.json())
         .then(data => {
             const metricsDiv = document.getElementById('system-metrics');
@@ -200,58 +221,81 @@ function fetchSystemMetrics() {
 }
 
 function fetchStockMetrics() {
-    fetch('/api/stock_metrics')
+    fetch(`${API_BASE_URL}/api/stock_metrics`)
         .then(response => response.json())
-        .then(stocks => {
-            const stocksDiv = document.getElementById('stock-metrics');
-            stocksDiv.innerHTML = '';
-
-            if (stocks && stocks.length > 0) {
-                stocks.forEach(stock => {
-                    const stockElement = document.createElement('li');
-                    stockElement.classList.add('list-group-item', 'd-flex', 'justify-content-between', 'align-items-center');
-                    stockElement.style.transition = 'background-color 1s';
-                    stockElement.style.backgroundColor = '#f0f7ff';
-                    
-                    // Determine if stock is up or down for styling
-                    const changeClass = stock.change_percent >= 0 ? 'badge-success' : 'badge-danger';
-                    const changeSign = stock.change_percent >= 0 ? '+' : '';
-                    
-                    stockElement.innerHTML = `
-                        <div>
-                            <strong>${stock.symbol}</strong>
-                            <span class="ml-3">$${stock.price.toFixed(2)}</span>
+        .then(data => {
+            console.log('Stock Metrics:', data);
+            
+            // Update the stock metrics list
+            const stockMetricsList = document.getElementById('stock-metrics');
+            stockMetricsList.innerHTML = '';
+            
+            // Get and sort the latest data
+            const latestData = {}; // Store latest data by symbol
+            
+            // First pass to get latest data for each symbol
+            data.forEach(item => {
+                const symbol = item.symbol;
+                if (!latestData[symbol] || new Date(item.timestamp) > new Date(latestData[symbol].timestamp)) {
+                    latestData[symbol] = item;
+                }
+            });
+            
+            // Sort symbols for consistent display order
+            const sortedSymbols = Object.keys(latestData).sort();
+            
+            // Add each stock to the list
+            sortedSymbols.forEach(symbol => {
+                const item = latestData[symbol];
+                const stockItem = document.createElement('li');
+                stockItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                
+                const changeClass = item.change_percent >= 0 ? 'badge-success' : 'badge-danger';
+                const changeSign = item.change_percent >= 0 ? '+' : '';
+                
+                // Add a tooltip explaining the percentage
+                stockItem.innerHTML = `
+                    <strong>${symbol}</strong>
+                    <div class="d-flex align-items-center">
+                        <span class="stock-price-display">$${item.price.toFixed(2)}</span>
+                        <span class="badge ${changeClass} stock-change-display" 
+                              title="Daily percentage change compared to previous close">
+                            ${changeSign}${item.change_percent}%
+                        </span>
                         </div>
-                        <span class="badge ${changeClass} badge-pill">${changeSign}${stock.change_percent.toFixed(2)}%</span>
-                    `;
-                    stocksDiv.appendChild(stockElement);
-                });
+                `;
                 
-                // Last Updated Timestamp
-                const lastUpdated = new Date(stocks[0].timestamp).toLocaleString();
-                document.getElementById('stock-last-updated').textContent = `Last stock update: ${lastUpdated}`;
+                stockMetricsList.appendChild(stockItem);
                 
-                // Reset background color after a short delay
-                setTimeout(() => {
-                    const elements = stocksDiv.querySelectorAll('.list-group-item');
-                    elements.forEach(el => {
-                        if (el.style) el.style.backgroundColor = '';
-                    });
-                }, 1000);
+                // Make sure we create/update the chart for this symbol
+                createOrUpdateStockChart(symbol, data.filter(d => d.symbol === symbol));
+            });
+            
+            // Update the last updated timestamp
+            if (data.length > 0) {
+                // Find the most recent timestamp across all data
+                let mostRecent = new Date(data[0].timestamp);
+                for (let i = 1; i < data.length; i++) {
+                    const current = new Date(data[i].timestamp);
+                    if (current > mostRecent) {
+                        mostRecent = current;
+                    }
+                }
                 
-                console.log('Stock metrics updated:', stocks);
-            } else {
-                const errorElement = document.createElement('li');
-                errorElement.classList.add('list-group-item', 'text-warning');
-                errorElement.textContent = 'No stock data available yet. Please wait for the first update.';
-                stocksDiv.appendChild(errorElement);
-                console.log('No stock metrics data available');
+                const formattedDate = mostRecent.toLocaleDateString();
+                const formattedTime = mostRecent.toLocaleTimeString();
+                document.getElementById('stock-last-updated').textContent = `Last stock update: ${formattedDate}, ${formattedTime}`;
             }
+            
+            // Flash the update indicator
+            const indicator = document.getElementById('update-indicator');
+            indicator.classList.add('active');
+            setTimeout(() => {
+                indicator.classList.remove('active');
+            }, 1000);
         })
         .catch(error => {
             console.error('Error fetching stock metrics:', error);
-            const stocksDiv = document.getElementById('stock-metrics');
-            stocksDiv.innerHTML = '<li class="list-group-item text-danger">Error fetching stock data. Check console for details.</li>';
         });
 }
 
@@ -265,7 +309,7 @@ function fetchHistoricalSystemMetrics() {
 // Function to fetch historical stock metrics and update individual charts
 function fetchHistoricalStockMetrics() {
     console.log('Fetching historical stock metrics...');
-    fetch('/api/historical/stock_metrics')
+    fetch(`${API_BASE_URL}/api/historical/stock_metrics`)
         .then(response => {
             console.log('Historical stock metrics response status:', response.status);
             if (!response.ok) {
@@ -371,6 +415,13 @@ function fetchHistoricalStockMetrics() {
                     }
                 }
             });
+            
+            // Add more detailed debugging
+            console.log(`Received ${data.length} total data points:`, data);
+            data.forEach(item => {
+                const date = new Date(item.timestamp);
+                console.log(`${item.symbol}: $${item.price} at ${date.toLocaleString()}`);
+            });
         })
         .catch(error => {
             console.error('Error fetching historical stock metrics:', error);
@@ -434,482 +485,346 @@ function calculatePriceChange(data, days) {
 }
 
 // Function to update chart for a selected time period
-function updateChartForTimePeriod(symbol, data, days) {
+function updateChartForTimePeriod(symbol, days) {
     console.log(`Updating chart for ${symbol} with time period of ${days} days`);
     
+    // Get the data for this symbol
+    let data = stockData[symbol];
     if (!data || data.length === 0) {
         console.error(`No data available for ${symbol}`);
         return;
     }
     
-    // Debug the data structure
-    console.log("First data point structure:", JSON.stringify(data[0], null, 2));
+    // Log the date range in the data for debugging
+    const dates = data.map(item => new Date(item.timestamp));
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    console.log(`Data range for ${symbol}: ${minDate.toLocaleString()} to ${maxDate.toLocaleString()} (${data.length} points)`);
     
-    // Sort data by timestamp
+    // Sort data by timestamp (oldest first)
     const sortedData = [...data].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    console.log(`Sorted data for ${symbol}:`, sortedData);
     
     // Calculate cutoff date for the selected time period
-    const now = new Date(sortedData[sortedData.length - 1].timestamp);
-    const cutoffDate = new Date(now);
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-    console.log(`Cutoff date for ${symbol}:`, cutoffDate);
+    let cutoffDate;
     
-    // Filter data for the selected time period
-    let filteredData = sortedData;
-    if (days < 9999) { // If not "ALL" time period
-        filteredData = sortedData.filter(item => new Date(item.timestamp) >= cutoffDate);
-    }
-    console.log(`Filtered data for ${symbol} (${filteredData.length} points):`, filteredData);
+    // Use the actual timestamps from the data, not current time
+    const latestDataTime = new Date(sortedData[sortedData.length - 1].timestamp);
     
-    // If we have very few data points, simulate more data points
-    if (filteredData.length < 5) {
-        console.log(`Not enough data points for ${symbol}, simulating more...`);
-        filteredData = simulateMoreDataPoints(filteredData, days);
-        console.log(`Simulated data for ${symbol} (${filteredData.length} points):`, filteredData);
-    }
-    
-    // Calculate price change for the selected time period
-    const priceInfo = calculatePriceChange(data, days);
-    console.log(`Price info for ${symbol}:`, priceInfo);
-    
-    // Update price and change display
-    const priceDisplay = document.getElementById(`price-display-${symbol}`);
-    const changeDisplay = document.getElementById(`change-display-${symbol}`);
-    
-    if (priceDisplay) {
-        priceDisplay.textContent = `$${priceInfo.price.toFixed(2)}`;
+    if (days === 'all') {
+        // For "all" view, don't filter any data
+        cutoffDate = new Date(0); // Beginning of time
+    } else if (days === '1') {
+        // For 1D view, look back exactly 24 hours
+        cutoffDate = new Date(latestDataTime);
+        cutoffDate.setHours(cutoffDate.getHours() - 24);
+        console.log(`1D view cutoff: ${cutoffDate.toLocaleString()}`);
+    } else {
+        // For other views, use days
+        cutoffDate = new Date(latestDataTime);
+        cutoffDate.setDate(cutoffDate.getDate() - parseInt(days, 10));
     }
     
-    if (changeDisplay) {
-        const priceChangeClass = priceInfo.change >= 0 ? 'stock-change-positive' : 'stock-change-negative';
-        const priceChangeSign = priceInfo.change >= 0 ? '+' : '';
+    // Apply the filter
+    const filteredData = sortedData.filter(item => new Date(item.timestamp) >= cutoffDate);
+    console.log(`Filtered to ${filteredData.length} points for ${days} day(s) view`);
+    
+    // If we have very few points, add interpolated points for visual clarity
+    let enhancedData = filteredData;
+    if (filteredData.length > 0 && filteredData.length < 5) {
+        console.log(`Adding interpolated points for better visualization`);
+        enhancedData = addInterpolatedPoints(filteredData);
+    }
+    
+    // Create sorted chart data in the format Chart.js expects
+    const chartData = enhancedData.map(item => ({
+        x: new Date(item.timestamp),
+        y: item.price
+    })).sort((a, b) => a.x - b.x);
+    
+    // Determine line color based on price trend (green for up, red for down)
+    let lineColor = 'rgba(40, 167, 69, 1)'; // Default green
+    let fillColor = 'rgba(40, 167, 69, 0.1)';
+    
+    if (chartData.length > 1) {
+        const firstPrice = chartData[0].y;
+        const lastPrice = chartData[chartData.length - 1].y;
         
-        changeDisplay.textContent = `${priceChangeSign}${priceInfo.change.toFixed(2)} (${priceChangeSign}${priceInfo.changePercent.toFixed(2)}%)`;
-        changeDisplay.className = `stock-change-display ${priceChangeClass}`;
+        if (lastPrice < firstPrice) {
+            lineColor = 'rgba(220, 53, 69, 1)'; // Red for downward trend
+            fillColor = 'rgba(220, 53, 69, 0.1)';
+        }
     }
     
-    // Get canvas element and container
-    const canvas = document.getElementById(`stock-chart-${symbol}`);
-    if (!canvas) {
-        console.error(`Canvas element not found for ${symbol}`);
-        return;
-    }
+    // Update chart data
+    stockCharts[symbol].data.datasets[0].data = chartData;
+    stockCharts[symbol].data.datasets[0].borderColor = lineColor;
+    stockCharts[symbol].data.datasets[0].backgroundColor = fillColor;
     
-    const cardBody = canvas.closest('.card-body');
+    // Update time unit based on selected period
+    let timeUnit = 'hour';
+    if (days === '1') timeUnit = 'hour';
+    else if (days === '7') timeUnit = 'day';
+    else if (days === '30') timeUnit = 'day';
+    else if (days === '90') timeUnit = 'week';
+    else if (days === '365' || days === 'all') timeUnit = 'month';
     
-    // Calculate min and max prices for y-axis scaling
-    const prices = filteredData.map(item => item.price);
-    if (prices.length === 0) {
-        console.error(`No price data available for ${symbol}`);
-        return;
-    }
+    stockCharts[symbol].options.scales.x.time.unit = timeUnit;
     
+    // Set y-axis min and max properly to avoid extreme scaling
+    if (chartData.length > 0) {
+        const prices = chartData.map(point => point.y);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
     const priceRange = maxPrice - minPrice;
     
-    // If all prices are the same, add a small range
-    const effectivePriceRange = priceRange === 0 ? maxPrice * 0.01 : priceRange;
-    
-    // Calculate appropriate chart height based on price range
-    // More range = taller chart
-    let chartHeight = 350; // Default height
-    
-    // Adjust height based on price range and time period
-    if (days >= 365) { // 1Y or ALL
-        chartHeight = 450; // Taller for long-term data
-    } else if (days >= 30) { // 1M or 3M
-        chartHeight = 400; // Medium height for medium-term data
-    } else if (effectivePriceRange > (priceInfo.price * 0.1)) { // If range is more than 10% of current price
-        chartHeight = 400; // Increase height for volatile stocks
+        // Determine appropriate padding based on price range
+        // Use at least 0.5% padding to make single points visible
+        const paddingPercent = Math.max(0.5, days === '1' ? 0.5 : 5); // 0.5% for 1D, 5% for others
+        const padding = Math.max(priceRange * paddingPercent / 100, minPrice * 0.005); // Ensure some minimum padding
+        
+        stockCharts[symbol].options.scales.y.min = Math.max(0, minPrice - padding);
+        stockCharts[symbol].options.scales.y.max = maxPrice + padding;
     }
     
-    // Add extra height for x-axis labels
-    chartHeight += 50;
-    
-    // Update card body height
-    if (cardBody) {
-        cardBody.style.height = `${chartHeight}px`;
+    // Calculate price change for the period
+    let changePercent = 0;
+    if (chartData.length > 1) {
+        const firstPrice = chartData[0].y;
+        const lastPrice = chartData[chartData.length - 1].y;
+        changePercent = ((lastPrice - firstPrice) / firstPrice) * 100;
     }
     
-    // Get canvas context
-    const ctx = canvas.getContext('2d');
+    // Update price change display
+    const priceElement = document.getElementById(`price-${symbol}`);
+    const changeElement = document.getElementById(`change-${symbol}`);
     
-    // Prepare the chart data in the format Chart.js expects
-    const chartData = filteredData
-        .filter(item => {
-            // Filter out any items with NaN or invalid values
-            const price = parseFloat(item.price);
-            const timestamp = new Date(item.timestamp);
-            const isValid = !isNaN(price) && !isNaN(timestamp.getTime());
-            if (!isValid) {
-                console.warn(`Filtered out invalid data point: ${JSON.stringify(item)}`);
-            }
-            return isValid;
-        })
-        .map(item => ({
-            x: new Date(item.timestamp),
-            y: parseFloat(item.price)
-        }));
-    
-    console.log("Final chart data:", chartData);
-    
-    // Ensure we have at least 2 data points
-    if (chartData.length < 2) {
-        console.warn(`Not enough valid data points for ${symbol} chart (${chartData.length})`);
-        // Add a simulated data point if needed
-        if (chartData.length === 1) {
-            const existingPoint = chartData[0];
-            const newTime = new Date(existingPoint.x);
-            newTime.setHours(newTime.getHours() - 1);
-            
-            chartData.push({
-                x: newTime,
-                y: existingPoint.y * (1 + (Math.random() * 0.02 - 0.01)) // +/- 1%
-            });
-            
-            console.log(`Added simulated data point at ${newTime.toISOString()}`);
-        }
+    if (priceElement && changeElement && chartData.length > 0) {
+        const currentPrice = chartData[chartData.length - 1].y;
+        priceElement.textContent = `$${currentPrice.toFixed(2)}`;
+        
+        const changeSign = changePercent >= 0 ? '+' : '';
+        const timePeriodLabel = days === '1' ? '24h' : 
+                               days === '7' ? '1W' : 
+                               days === '30' ? '1M' : 
+                               days === '90' ? '3M' : 
+                               days === '365' ? '1Y' : 'All';
+        
+        changeElement.textContent = `${changeSign}${changePercent.toFixed(2)}% (${timePeriodLabel})`;
+        changeElement.className = `stock-change ml-2 ${changePercent >= 0 ? 'text-success' : 'text-danger'}`;
     }
     
-    // Get color for this stock
-    const colors = {
-        'AAPL': '#4CAF50',
-        'GOOGL': '#2196F3',
-        'MSFT': '#F44336',
-        'AMZN': '#FF9800',
-        'META': '#9C27B0',
-        'TSLA': '#00BCD4',
-        'default': '#607D8B'
-    };
-    const color = colors[symbol] || colors.default;
+    // Update the chart
+    stockCharts[symbol].update();
+}
+
+// Helper function to add interpolated points for sparse data
+function addInterpolatedPoints(data) {
+    if (data.length <= 1) return data;
     
-    // Destroy previous chart if it exists
-    if (stockCharts[symbol]) {
-        stockCharts[symbol].destroy();
+    const result = [...data];
+    
+    // Add a point every hour between min and max date
+    const timestamps = data.map(item => new Date(item.timestamp).getTime());
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    
+    // Get the first and last prices for linear interpolation
+    const firstPrice = data.find(item => new Date(item.timestamp).getTime() === minTime).price;
+    const lastPrice = data.find(item => new Date(item.timestamp).getTime() === maxTime).price;
+    
+    // Add a point every hour
+    const hourMs = 60 * 60 * 1000;
+    for (let time = minTime + hourMs; time < maxTime; time += hourMs) {
+        // Simple linear interpolation
+        const progress = (time - minTime) / (maxTime - minTime);
+        const interpolatedPrice = firstPrice + (lastPrice - firstPrice) * progress;
+        
+        result.push({
+            symbol: data[0].symbol,
+            price: interpolatedPrice,
+            change_percent: 0, // Can't interpolate this meaningfully
+            timestamp: new Date(time).toISOString(),
+            interpolated: true // Mark as interpolated
+        });
     }
     
-    // Determine time unit based on selected time period
-    let timeUnit = 'minute';
-    let displayFormat = 'HH:mm';
-    let stepSize = undefined;
-    let maxTicksLimit = 12;
+    return result.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+}
+
+// Function to create or update an individual stock chart
+function createOrUpdateStockChart(symbol, data) {
+    // Chart container ID
+    const chartContainerId = `stock-chart-${symbol}`;
     
-    if (days >= 365) {
-        timeUnit = 'month';
-        displayFormat = 'MMM yyyy';
-        stepSize = 1; // Show every month
-        maxTicksLimit = 6; // Fewer ticks for long periods
-    } else if (days >= 90) {
-        timeUnit = 'month';
-        displayFormat = 'MMM d';
-        stepSize = 1; // Show every month
-        maxTicksLimit = 6;
-    } else if (days >= 30) {
-        timeUnit = 'week';
-        displayFormat = 'MMM d';
-        stepSize = 1; // Show every week
-        maxTicksLimit = 6;
-    } else if (days >= 7) {
-        timeUnit = 'day';
-        displayFormat = 'MMM d';
-        stepSize = 1; // Show every day
-        maxTicksLimit = 7;
-    } else {
-        // For 1D, use hours if we have enough data points
-        if (filteredData.length > 12) {
-            timeUnit = 'hour';
-            displayFormat = 'HH:mm';
-            stepSize = 2; // Show every 2 hours
-            maxTicksLimit = 8;
-        }
+    // Create the container if it doesn't exist
+    let chartContainer = document.getElementById(chartContainerId);
+    
+    if (!chartContainer) {
+        // Create a new card for this stock
+        const cardHtml = `
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">${symbol} Stock Price</h5>
+                        <span class="stock-last-updated small"></span>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="stock-info">
+                                <span class="stock-price" id="price-${symbol}"></span>
+                                <span class="stock-change ml-2" id="change-${symbol}"></span>
+                            </div>
+                            <div class="time-period-selector">
+                                <div class="btn-group" role="group" aria-label="Time Period">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary active" data-days="1" data-symbol="${symbol}">1D</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-days="7" data-symbol="${symbol}">1W</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-days="30" data-symbol="${symbol}">1M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-days="90" data-symbol="${symbol}">3M</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-days="365" data-symbol="${symbol}">1Y</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-days="all" data-symbol="${symbol}">ALL</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stock-chart-container">
+                            <canvas id="${chartContainerId}"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add to the DOM
+        document.getElementById('stock-charts-container').insertAdjacentHTML('beforeend', cardHtml);
+        
+        // Get the newly created canvas
+        chartContainer = document.getElementById(chartContainerId);
     }
     
-    // Calculate appropriate y-axis min and max with padding
-    const padding = effectivePriceRange * 0.1; // 10% padding
-    const yMin = Math.max(0, minPrice - padding); // Don't go below 0
-    const yMax = maxPrice + padding;
+    // Ensure we're not artificially restricting the data
+    stockData[symbol] = data; // Store all the data
     
-    console.log(`Chart y-axis range: ${yMin} to ${yMax}`);
+    // Make sure we're handling sparse data properly
+    if (data.length < 2) {
+        console.log(`Not enough data points for ${symbol}, need at least 2`);
+        // Handle this case - perhaps add placeholder data or show a message
+    }
     
-    // Create new chart with dynamic height
+    // Get latest price for initial display
+    const latestData = [...data].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    
+    // Create or update initial price display
+    const priceElement = document.getElementById(`price-${symbol}`);
+    if (priceElement && latestData) {
+        priceElement.textContent = `$${latestData.price.toFixed(2)}`;
+    }
+    
+    // Initialize chart with empty data
+    if (!stockCharts[symbol]) {
+        const ctx = chartContainer.getContext('2d');
     stockCharts[symbol] = new Chart(ctx, {
         type: 'line',
         data: {
-            datasets: [
-                {
-                    label: `${symbol} Price ($)`,
-                    data: chartData,
-                    borderColor: color,
-                    backgroundColor: `${color}20`,
+                datasets: [{
+                    label: `${symbol} Price`,
+                    data: [],
+                    borderColor: 'rgba(40, 167, 69, 1)',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
                     borderWidth: 2,
-                    tension: 0.4,
-                    pointRadius: 3,
-                    pointHoverRadius: 5,
-                    fill: false
-                }
-            ]
+                    fill: true,
+                    pointRadius: 6,  // Larger points for better visibility with sparse data
+                    pointHoverRadius: 9,  // Larger hover points
+                    pointBackgroundColor: 'rgba(40, 167, 69, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    tension: 0.1,  // Slight curve for better visual
+                    spanGaps: true  // Connect points even with gaps in data
+                }]
         },
         options: {
+                animation: {
+                    duration: 1000
+                },
             responsive: true,
             maintainAspectRatio: false,
-            layout: {
-                padding: {
-                    left: 15,
-                    right: 30,
-                    top: 20,
-                    bottom: 30 // Increased bottom padding for x-axis labels
-                }
+                interaction: {
+                    mode: 'index',
+                    intersect: false
             },
             plugins: {
-                legend: {
-                    display: false // Hide legend since we have the symbol in the card header
-                },
                 tooltip: {
+                        usePointStyle: true,
                     callbacks: {
+                            title: function(tooltipItems) {
+                                const date = new Date(tooltipItems[0].parsed.x);
+                                return date.toLocaleString();
+                            },
                         label: function(context) {
-                            return `$${context.raw.y.toFixed(2)}`;
+                                return `${symbol}: $${context.parsed.y.toFixed(2)}`;
                         }
                     }
+                    },
+                    legend: {
+                        display: false
                 }
             },
             scales: {
                 x: {
                     type: 'time',
                     time: {
-                        unit: timeUnit,
-                        stepSize: stepSize,
+                            unit: 'hour',
+                            tooltipFormat: 'PPpp',
                         displayFormats: {
                             minute: 'HH:mm',
                             hour: 'HH:mm',
                             day: 'MMM d',
                             week: 'MMM d',
-                            month: displayFormat
+                                month: 'MMM yyyy'
+                            }
                         },
-                        tooltipFormat: 'MMM d, yyyy HH:mm'
-                    },
-                    title: {
+                        grid: {
                         display: true,
-                        text: 'Time',
-                        font: {
-                            size: 12
-                        }
+                            color: 'rgba(0, 0, 0, 0.05)'
                     },
                     ticks: {
-                        maxTicksLimit: maxTicksLimit,
-                        font: {
-                            size: 11
-                        }
-                    },
-                    grid: {
-                        drawBorder: true,
-                        drawOnChartArea: true
+                            maxRotation: 0,
+                            autoSkip: true,
+                            padding: 10
                     }
                 },
                 y: {
-                    min: yMin,
-                    max: yMax,
-                    title: {
                         display: true,
-                        text: 'Price ($)',
-                        font: {
-                            size: 12
-                        }
+                        position: 'right',
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
                     },
                     ticks: {
                         callback: function(value) {
                             return '$' + value.toFixed(2);
                         },
-                        font: {
-                            size: 11
-                        }
+                            padding: 10
+                        },
+                        beginAtZero: false,
+                        grace: '5%'
+                    }
+                },
+                hover: {
+                    mode: 'nearest',
+                    intersect: false
+                },
+                elements: {
+                    line: {
+                        borderJoinStyle: 'round'  // Smoother line joining
                     },
-                    grid: {
-                        drawBorder: true,
-                        drawOnChartArea: true
+                    point: {
+                        hitRadius: 10  // Larger hit area for interaction
                     }
                 }
-            },
-            animation: {
-                duration: 500,
-                easing: 'easeOutQuad'
-            },
-            parsing: false,  // Disable parsing since we're using {x,y} format
-            normalized: true // Normalize the data
-        }
-    });
-    
-    console.log(`Chart for ${symbol} created with ${filteredData.length} data points`);
-    
-    // Add event listeners to time period buttons
-    const timeSelector = document.getElementById(`time-selector-${symbol}`);
-    if (timeSelector) {
-        const buttons = timeSelector.querySelectorAll('.btn');
-        buttons.forEach(button => {
-            button.addEventListener('click', function() {
-                // Remove active class from all buttons
-                buttons.forEach(btn => btn.classList.remove('active'));
-                // Add active class to clicked button
-                this.classList.add('active');
-                
-                // Get selected time period
-                const periodId = this.getAttribute('data-period');
-                const period = timePeriods.find(p => p.id === periodId);
-                
-                // Update chart with selected time period
-                updateChartForTimePeriod(symbol, data, period.days);
-            });
+            }
         });
     }
-}
-
-// Function to simulate more data points for better visualization
-function simulateMoreDataPoints(data, days) {
-    console.log('Simulating more data points with input:', data);
-    
-    if (data.length < 2) {
-        console.warn('Not enough data points to simulate more (need at least 2)');
-        return data;
-    }
-    
-    const result = [...data];
-    const firstPoint = data[0];
-    const lastPoint = data[data.length - 1];
-    
-    const startTime = new Date(firstPoint.timestamp).getTime();
-    const endTime = new Date(lastPoint.timestamp).getTime();
-    const timeRange = endTime - startTime;
-    
-    console.log(`Simulating between ${new Date(startTime).toLocaleString()} and ${new Date(endTime).toLocaleString()}`);
-    
-    // Determine how many points to add
-    const pointsToAdd = Math.min(20, days * 2);
-    console.log(`Adding ${pointsToAdd} simulated points`);
-    
-    // If start and end times are the same, create a time range
-    const effectiveTimeRange = timeRange === 0 ? 3600000 * 24 : timeRange; // Use 24 hours if same time
-    const effectiveStartTime = timeRange === 0 ? startTime - (3600000 * 12) : startTime; // 12 hours before
-    
-    for (let i = 1; i < pointsToAdd; i++) {
-        const ratio = i / pointsToAdd;
-        const time = effectiveStartTime + (effectiveTimeRange * ratio);
-        const timestamp = new Date(time).toISOString();
-        
-        // Interpolate price with some randomness
-        const basePrice = firstPoint.price + ((lastPoint.price - firstPoint.price) * ratio);
-        const randomFactor = 0.02; // 2% random variation
-        const randomVariation = (Math.random() * 2 - 1) * basePrice * randomFactor;
-        const price = basePrice + randomVariation;
-        
-        // Create a new data point with the same structure as the original data
-        const newPoint = {
-            symbol: firstPoint.symbol,
-            price: price,
-            timestamp: timestamp,
-            change_percent: 0 // Not used for chart display
-        };
-        
-        console.log(`Generated simulated point: ${timestamp} - $${price.toFixed(2)}`);
-        result.push(newPoint);
-    }
-    
-    // Sort by timestamp
-    return result.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-}
-
-// Function to create or update an individual stock chart
-function createOrUpdateStockChart(symbol, data) {
-    console.log(`Creating/updating chart for ${symbol} with ${data.length} data points`);
-    
-    // Define colors for different stocks
-    const colors = {
-        'AAPL': '#4CAF50',  // Green for Apple
-        'GOOGL': '#2196F3', // Blue for Google
-        'MSFT': '#F44336',  // Red for Microsoft
-        'AMZN': '#FF9800',  // Orange for Amazon
-        'META': '#9C27B0',  // Purple for Meta
-        'TSLA': '#00BCD4',  // Cyan for Tesla
-        'default': '#607D8B' // Default gray
-    };
-    
-    // Get color for this stock
-    const color = colors[symbol] || colors.default;
-    
-    // Define time periods
-    const timePeriods = [
-        { id: '1D', label: '1D', days: 1 },
-        { id: '1W', label: '1W', days: 7 },
-        { id: '1M', label: '1M', days: 30 },
-        { id: '3M', label: '3M', days: 90 },
-        { id: '1Y', label: '1Y', days: 365 },
-        { id: 'ALL', label: 'ALL', days: 9999 }
-    ];
-    
-    // Get the most recent timestamp for this stock
-    const latestData = data.length > 0 ? data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0] : null;
-    const lastUpdated = latestData ? new Date(latestData.timestamp).toLocaleString() : 'No data available';
-    console.log(`Latest data for ${symbol}:`, latestData);
-    
-    // Check if container exists, if not create it
-    let chartContainer = document.getElementById(`stock-chart-container-${symbol}`);
-    console.log(`Chart container for ${symbol} exists:`, !!chartContainer);
-    
-    if (!chartContainer) {
-        // Create a new column for this stock chart - now full width
-        const column = document.createElement('div');
-        column.className = 'col-md-12 mb-4'; // Changed from col-md-6 to col-md-12 for full width
-        column.id = `stock-chart-container-${symbol}`;
-        
-        // Create time period buttons
-        let timePeriodButtons = '';
-        timePeriods.forEach((period, index) => {
-            const activeClass = index === 0 ? 'active' : '';
-            timePeriodButtons += `<button class="btn ${activeClass}" data-period="${period.id}">${period.label}</button>`;
-        });
-        
-        // Calculate price change for the default period (1D)
-        const priceInfo = calculatePriceChange(data, timePeriods[0].days);
-        const priceChangeClass = priceInfo.change >= 0 ? 'stock-change-positive' : 'stock-change-negative';
-        const priceChangeSign = priceInfo.change >= 0 ? '+' : '';
-        
-        // Create card for the chart
-        column.innerHTML = `
-            <div class="card">
-                <div class="card-header" style="background-color: ${color}20; border-color: ${color}">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <strong>${symbol}</strong> Stock Price
-                        <small class="text-muted stock-last-updated" id="last-updated-${symbol}">Last update: ${lastUpdated}</small>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <span class="stock-price-display" id="price-display-${symbol}">$${priceInfo.price.toFixed(2)}</span>
-                            <span class="stock-change-display ${priceChangeClass}" id="change-display-${symbol}">${priceChangeSign}${priceInfo.change.toFixed(2)} (${priceChangeSign}${priceInfo.changePercent.toFixed(2)}%)</span>
-                        </div>
-                        <div class="time-period-selector">
-                            <div class="btn-group" id="time-selector-${symbol}">
-                                ${timePeriodButtons}
-                            </div>
-                        </div>
-                    </div>
-                    <canvas id="stock-chart-${symbol}"></canvas>
-                </div>
-            </div>
-        `;
-        
-        // Add to the container
-        document.getElementById('stock-charts-container').appendChild(column);
-        
-        // Update reference to the container
-        chartContainer = column;
         
         // Add event listeners to time period buttons
-        setTimeout(() => {
-            const buttonGroup = document.getElementById(`time-selector-${symbol}`);
-            if (buttonGroup) {
-                const buttons = buttonGroup.querySelectorAll('.btn');
+    const buttons = document.querySelectorAll(`button[data-symbol="${symbol}"]`);
                 buttons.forEach(button => {
                     button.addEventListener('click', function() {
                         // Remove active class from all buttons
@@ -917,28 +832,13 @@ function createOrUpdateStockChart(symbol, data) {
                         // Add active class to clicked button
                         this.classList.add('active');
                         
-                        // Get selected time period
-                        const periodId = this.getAttribute('data-period');
-                        const period = timePeriods.find(p => p.id === periodId);
-                        
-                        // Update chart with selected time period
-                        updateChartForTimePeriod(symbol, data, period.days);
+            // Update chart for selected time period
+            updateChartForTimePeriod(symbol, this.getAttribute('data-days'));
                     });
                 });
-            }
-        }, 100);
-    } else {
-        // Update the last updated timestamp
-        const lastUpdatedElement = document.getElementById(`last-updated-${symbol}`);
-        if (lastUpdatedElement) {
-            lastUpdatedElement.textContent = `Last update: ${lastUpdated}`;
-        }
-    }
     
-    // Update chart with default time period (1D)
-    updateChartForTimePeriod(symbol, data, timePeriods[0].days);
-    
-    console.log(`Chart for ${symbol} created/updated`);
+    // Update with 1-day view by default
+    updateChartForTimePeriod(symbol, '1');
 }
 
 // Fetch all metrics
@@ -1014,7 +914,7 @@ function fetchSystemMetricsForTable() {
     $('#refresh-system-table').html('<i class="fas fa-spinner fa-spin"></i> Loading...');
     $('#refresh-system-table').prop('disabled', true);
     
-    fetch('/api/system_metrics/table')
+    fetch(`${API_BASE_URL}/api/system_metrics/table`)
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP error! Status: ${response.status}`);
@@ -1048,4 +948,52 @@ function fetchSystemMetricsForTable() {
             $('#refresh-system-table').html('<i class="fas fa-sync-alt"></i> Refresh Data');
             $('#refresh-system-table').prop('disabled', false);
         });
+}
+
+// Function to toggle metrics collection
+function toggleMetricsCollection() {
+    const button = document.getElementById('toggle-metrics');
+    const statusElement = document.getElementById('metrics-status');
+    
+    if (metricsRunning) {
+        // Send stop command
+        fetch(`${API_BASE_URL}/api/metrics/stop`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+                if (data.status === 'success') {
+                    button.classList.remove('btn-danger');
+                    button.classList.add('btn-success');
+                    button.innerHTML = '<i class="fas fa-play-circle"></i> Start Metrics Collection';
+                    
+                    statusElement.classList.remove('badge-success');
+                    statusElement.classList.add('badge-danger');
+                    statusElement.textContent = 'Stopped';
+            
+            metricsRunning = false;
+                }
+    })
+    .catch(error => {
+        console.error('Error toggling metrics collection:', error);
+        alert('Error toggling metrics collection. Please try again.');
+    });
+    } else {
+        // We can't remotely start the metrics collection, so just update the UI
+        button.classList.remove('btn-success');
+        button.classList.add('btn-danger');
+        button.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Metrics Collection';
+        
+        statusElement.classList.remove('badge-danger');
+        statusElement.classList.add('badge-success');
+        statusElement.textContent = 'Running';
+        
+        metricsRunning = true;
+        
+        // Show a notification that manual restart is required
+        alert('Please note: You need to manually restart the metrics collection script on your local machine.');
+    }
 }
