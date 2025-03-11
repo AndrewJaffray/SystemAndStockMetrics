@@ -3,6 +3,7 @@ let cpuGauge = null;
 let memoryGauge = null;
 let stockCharts = {}; // Object to store individual stock charts by symbol
 let stockData = {}; // Object to store stock data by symbol
+let systemMetricsTable = null; // DataTable instance for system metrics
 
 // Called when page is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -10,11 +11,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize empty gauges
     initGauges();
     
+    // Initialize system metrics DataTable
+    initSystemMetricsTable();
+    
     // Immediately fetch historical data to show charts
     fetchHistoricalStockMetrics();
     
     // Then fetch all metrics (including real-time data)
     fetchAllMetrics();
+    
+    // Set up refresh button for system metrics table
+    document.getElementById('refresh-system-table').addEventListener('click', function() {
+        fetchSystemMetricsForTable();
+    });
 });
 
 // Initialize the gauge charts with default values
@@ -934,13 +943,109 @@ function createOrUpdateStockChart(symbol, data) {
 
 // Fetch all metrics
 function fetchAllMetrics() {
+    console.log('Fetching all metrics...');
     fetchSystemMetrics();
     fetchStockMetrics();
     // We still call this for compatibility, but it doesn't do anything now
     fetchHistoricalSystemMetrics();
     fetchHistoricalStockMetrics();
+    
+    // Refresh the system metrics table every 5 cycles (50 seconds)
+    const currentTime = new Date().getTime();
+    if (!window.lastTableRefresh || (currentTime - window.lastTableRefresh) > 50000) {
+        console.log('Refreshing system metrics table...');
+        fetchSystemMetricsForTable();
+        window.lastTableRefresh = currentTime;
+    }
+    
+    // Force a check of the stock charts
+    setTimeout(() => {
+        const stockChartsContainer = document.getElementById('stock-charts-container');
+        if (stockChartsContainer && stockChartsContainer.children.length === 0) {
+            console.log('No stock charts found, forcing a refresh of historical stock metrics');
+            fetchHistoricalStockMetrics();
+        }
+    }, 1000);
 }
 
 // Fetch metrics every 10 seconds instead of 30
 const intervalId = setInterval(fetchAllMetrics, 10000);
 console.log('Metrics update interval set:', intervalId);
+
+// Function to initialize the system metrics DataTable
+function initSystemMetricsTable() {
+    systemMetricsTable = $('#system-metrics-table').DataTable({
+        columns: [
+            { data: 'timestamp', title: 'Timestamp' },
+            { data: 'computer_id', title: 'Computer ID' },
+            { 
+                data: 'cpu_usage', 
+                title: 'CPU Usage (%)',
+                render: function(data) {
+                    return data.toFixed(1) + '%';
+                }
+            },
+            { 
+                data: 'memory_usage', 
+                title: 'Memory Usage (%)',
+                render: function(data) {
+                    return data.toFixed(1) + '%';
+                }
+            }
+        ],
+        order: [[0, 'desc']], // Sort by timestamp descending
+        pageLength: 10,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        responsive: true,
+        language: {
+            emptyTable: "No system metrics data available"
+        }
+    });
+    
+    // Initial data fetch
+    fetchSystemMetricsForTable();
+}
+
+// Function to fetch system metrics data for the DataTable
+function fetchSystemMetricsForTable() {
+    console.log('Fetching system metrics for table...');
+    
+    // Show loading indicator
+    $('#refresh-system-table').html('<i class="fas fa-spinner fa-spin"></i> Loading...');
+    $('#refresh-system-table').prop('disabled', true);
+    
+    fetch('/api/system_metrics/table')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log(`Retrieved ${data.length} system metrics records for table`);
+            
+            // Format timestamps for better readability
+            data.forEach(item => {
+                if (item.timestamp) {
+                    const date = new Date(item.timestamp);
+                    item.timestamp = date.toLocaleString();
+                }
+            });
+            
+            // Clear existing data and add new data
+            systemMetricsTable.clear();
+            systemMetricsTable.rows.add(data);
+            systemMetricsTable.draw();
+            
+            // Reset refresh button
+            $('#refresh-system-table').html('<i class="fas fa-sync-alt"></i> Refresh Data');
+            $('#refresh-system-table').prop('disabled', false);
+        })
+        .catch(error => {
+            console.error('Error fetching system metrics for table:', error);
+            
+            // Reset refresh button
+            $('#refresh-system-table').html('<i class="fas fa-sync-alt"></i> Refresh Data');
+            $('#refresh-system-table').prop('disabled', false);
+        });
+}

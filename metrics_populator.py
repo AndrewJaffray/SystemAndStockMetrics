@@ -7,6 +7,8 @@ import json
 import platform
 import subprocess
 import os
+import uuid
+import socket
 from datetime import datetime
 
 # Define the base directory
@@ -33,10 +35,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Generate a unique computer ID
+def generate_computer_id():
+    """Generate a unique identifier for this computer."""
+    try:
+        # Try to use the hostname and MAC address
+        hostname = socket.gethostname()
+        mac = uuid.getnode()
+        return f"{hostname}-{mac}"
+    except:
+        # Fallback to a random UUID
+        return str(uuid.uuid4())
+
+# Store the computer ID
+COMPUTER_ID = generate_computer_id()
+logger.info(f"Computer ID: {COMPUTER_ID}")
+
 def gather_metrics():
     """Gathers core system metrics."""
     metrics = {}
 
+    # Add computer ID
+    metrics['computer_id'] = COMPUTER_ID
+    
     # Core metrics
     metrics['cpu_usage'] = psutil.cpu_percent(interval=1)
     metrics['memory_usage'] = psutil.virtual_memory().percent

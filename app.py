@@ -43,6 +43,7 @@ def init_db():
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS laptop_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    computer_id TEXT,
                     cpu_usage REAL,
                     memory_usage REAL,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -59,13 +60,34 @@ def init_db():
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-        logger.info("Database Initialized successfully.")
-        print("Database Initialized.")
+            
+            logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
 
-# Initialize the database
+# Function to migrate database schema
+def migrate_db():
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            
+            # Check if computer_id column exists in laptop_metrics table
+            cursor.execute("PRAGMA table_info(laptop_metrics)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'computer_id' not in columns:
+                logger.info("Adding computer_id column to laptop_metrics table")
+                conn.execute("ALTER TABLE laptop_metrics ADD COLUMN computer_id TEXT")
+                conn.commit()
+                logger.info("Migration completed successfully")
+            else:
+                logger.info("computer_id column already exists, no migration needed")
+    except Exception as e:
+        logger.error(f"Error migrating database: {e}")
+
+# Initialize and migrate the database
 init_db()
+migrate_db()
 
 @app.route('/metrics', methods=['POST'])
 def receive_metrics():
@@ -77,9 +99,9 @@ def receive_metrics():
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cur = conn.cursor()
                 cur.execute('''
-                    INSERT INTO laptop_metrics (cpu_usage, memory_usage, last_updated)
-                    VALUES (?, ?, ?)
-                ''', (data.get('cpu_usage'), data.get('memory_usage'), datetime.now()))
+                    INSERT INTO laptop_metrics (computer_id, cpu_usage, memory_usage, last_updated)
+                    VALUES (?, ?, ?, ?)
+                ''', (data.get('computer_id', 'unknown'), data.get('cpu_usage'), data.get('memory_usage'), datetime.now()))
                 conn.commit()
             logger.info("Successfully inserted metrics data into database")
             return jsonify({"message": "Metrics received"}), 200
@@ -95,20 +117,20 @@ def api_metrics():
     try:
         with sqlite3.connect(DATABASE_PATH) as conn:
             cur = conn.cursor()
-            cur.execute('SELECT cpu_usage, memory_usage, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
+            cur.execute('SELECT computer_id, cpu_usage, memory_usage, last_updated FROM laptop_metrics ORDER BY id DESC LIMIT 1')
             row = cur.fetchone()
             if row:
                 metric = {
-                    'cpu_usage': row[0],
-                    'memory_usage': row[1],
-                    'last_updated': row[2]
+                    'computer_id': row[0],
+                    'cpu_usage': row[1],
+                    'memory_usage': row[2],
+                    'last_updated': row[3]
                 }
                 logger.info(f"Retrieved latest metrics: {metric}")
-            else:
-                logger.warning("No metrics data found in database")
     except Exception as e:
-        logger.error(f"Error retrieving metrics data: {e}")
-    return jsonify(metric)
+        logger.error(f"Error retrieving metrics: {e}")
+    
+    return jsonify(metric if metric else {})
 
 @app.route('/stock_metrics', methods=['POST'])
 def receive_stock_metrics():
@@ -277,6 +299,55 @@ def api_historical_stock_metrics():
                 logger.warning("No historical stock metrics found in database")
     except Exception as e:
         logger.error(f"Error retrieving historical stock metrics: {e}")
+    
+    return jsonify(metrics)
+
+@app.route('/api/system_metrics/table', methods=['GET'])
+def api_system_metrics_table():
+    """Endpoint to get system metrics data for the DataTable"""
+    computer_id = request.args.get('computer_id', None)
+    limit = request.args.get('limit', 100, type=int)
+    metrics = []
+    
+    try:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            
+            if computer_id:
+                # Get data for a specific computer
+                cur.execute('''
+                    SELECT id, computer_id, cpu_usage, memory_usage, last_updated 
+                    FROM laptop_metrics 
+                    WHERE computer_id = ?
+                    ORDER BY last_updated DESC
+                    LIMIT ?
+                ''', (computer_id, limit))
+            else:
+                # Get data for all computers
+                cur.execute('''
+                    SELECT id, computer_id, cpu_usage, memory_usage, last_updated 
+                    FROM laptop_metrics 
+                    ORDER BY last_updated DESC
+                    LIMIT ?
+                ''', (limit,))
+            
+            rows = cur.fetchall()
+            for row in rows:
+                metrics.append({
+                    'id': row['id'],
+                    'computer_id': row['computer_id'],
+                    'cpu_usage': row['cpu_usage'],
+                    'memory_usage': row['memory_usage'],
+                    'timestamp': row['last_updated']
+                })
+            
+            if metrics:
+                logger.info(f"Retrieved {len(metrics)} system metrics records for table")
+            else:
+                logger.warning("No system metrics found in database for table")
+    except Exception as e:
+        logger.error(f"Error retrieving system metrics for table: {e}")
     
     return jsonify(metrics)
 
